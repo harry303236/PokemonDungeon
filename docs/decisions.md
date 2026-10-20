@@ -7,3 +7,4 @@
 - ADR-020: XP curve `20 * L^1.5` (TUNE); evolution by level only changes species/stats/color (no cutscene).
 - ADR-021: Floor-5 boss is a single-phase Onix (hpMult 6), no telegraphed phases yet.
 - ADR-022: Kenney assets not added (Q19): all visuals are procedural shapes.
+- ADR-023: Evolution buffs flamethrower beam (length ×1.3/width ×1.6 at Lv16; ×1.6/×2.2 at Lv36, TUNE). Debug hotkeys L / Shift+L for playtesting.

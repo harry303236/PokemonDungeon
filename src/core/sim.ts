@@ -50,6 +50,18 @@ export class Sim {
     this.loadFloor(1);
   }
 
+  /** 0 = charmander, 1 = charmeleon, 2 = charizard. */
+  get evoStage(): number { const l = this.progress.level; return l >= 36 ? 2 : l >= 16 ? 1 : 0; }
+  /** Evolution buff for flamethrower beam: [lengthMult, widthMult]. TUNE */
+  static beamBuff(stage: number): [number, number] { return ([[1, 1], [1.3, 1.6], [1.6, 2.2]] as [number, number][])[stage] ?? [1, 1]; }
+
+  /** Debug: add levels (or jump to next evolution level). */
+  debugLevelUp(toNextEvo = false): void {
+    const pr = this.progress;
+    const target = toNextEvo ? (pr.level < 16 ? 16 : pr.level < 36 ? 36 : pr.level + 1) : pr.level + 1;
+    while (pr.level < Math.min(50, target)) this.gainXp(xpToNext(pr.level) - pr.xp);
+  }
+
   get speciesId(): string { const l = this.progress.level; return l >= 36 ? 'charizard' : l >= 16 ? 'charmeleon' : 'charmander'; }
 
   equipStats(): EquipStats {
@@ -165,9 +177,10 @@ export class Sim {
       }
       case 'beam': {
         const angles = id === 'flamethrower' && eq.split ? [-25, 0, 25].map((d) => ang + (d * Math.PI) / 180) : [ang];
-        const lenMult = angles.length > 1 ? 0.6 : 1; const dmgMult = angles.length > 1 ? 0.5 : 1;
+        const [evoLen, evoWidth] = Sim.beamBuff(this.evoStage);
+        const lenMult = (angles.length > 1 ? 0.6 : 1) * evoLen; const dmgMult = angles.length > 1 ? 0.5 : 1;
         for (const a of angles) this.world.spawn({ kind: 'beam', x: p.x, y: p.y, rot: a - ang, r: 0, team: 'player', owner: p.id, moveId: id,
-          life: pr.duration ?? 0.8, tick: pr.tick ?? 0.1, tickT: 0, len: (pr.length ?? 300) * lenMult, width: pr.width ?? 22,
+          life: pr.duration ?? 0.8, tick: pr.tick ?? 0.1, tickT: 0, len: (pr.length ?? 300) * lenMult, width: (pr.width ?? 22) * evoWidth,
           mods: { ...mods, powerBonus: mods.powerBonus }, delay: dmgMult });
         break;
       }
@@ -255,10 +268,12 @@ export class Sim {
   gainXp(n: number): void {
     const pr = this.progress; pr.xp += n;
     while (pr.level < 50 && pr.xp >= xpToNext(pr.level)) {
+      const before = this.evoStage;
       pr.xp -= xpToNext(pr.level); pr.level++;
       const sp = speciesData(this.speciesId); const st = calcStats(sp, pr.level);
       const p = this.player; p.stats = st; p.level = pr.level; p.maxHp = st.maxHp; p.hp = st.maxHp; p.types = sp.types; p.speciesId = sp.id;
       this.bus.emit('player:levelup', { level: pr.level });
+      if (this.evoStage > before) this.bus.emit('player:evolve', { speciesId: sp.id, stage: this.evoStage });
     }
   }
 

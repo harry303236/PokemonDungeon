@@ -6,6 +6,7 @@ export interface GameEvents {
   'loot:dropped': { itemId: number; x: number; y: number };
   'loot:picked': { itemId: number };
   'player:levelup': { level: number };
+  'player:evolve': { speciesId: string; stage: number };
   'floor:cleared': { floor: number };
 }
 type Handler<K extends keyof GameEvents> = (p: GameEvents[K]) => void;

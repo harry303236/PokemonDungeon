@@ -42,6 +42,7 @@ export class DungeonScene extends Phaser.Scene {
     this.events.once('shutdown', () => this.inv.destroy());
     const kb = this.input.keyboard;
     kb?.on('keydown-I', () => this.inv.toggle());
+    kb?.on('keydown-L', (ev: KeyboardEvent) => this.sim.debugLevelUp(ev.shiftKey)); // debug
     kb?.on('keydown-R', () => { if (this.sim.player.dead) this.sim.respawn(); });
     kb?.on('keydown-ENTER', () => { if (this.sim.victory) { saveProgress(this.sim.progress); this.scene.start('title'); } });
     this.bindEvents();
@@ -58,6 +59,7 @@ export class DungeonScene extends Phaser.Scene {
       this.tweens.add({ targets: txt, y: e.y - 36, alpha: 0, duration: 700, onComplete: () => txt.destroy() });
     });
     bus.on('player:levelup', (e) => { this.say(t('hud.levelup', { level: e.level })); saveProgress(this.sim.progress); });
+    bus.on('player:evolve', (e) => { this.say(t(`hud.evolve.${e.stage}`)); saveProgress(this.sim.progress); });
     bus.on('floor:cleared', () => this.say(t('hud.exitOpen')));
     bus.on('loot:picked', () => { const it = this.sim.progress.inventory.at(-1); if (it) this.say(t('hud.loot', { rarity: t(`rarity.${it.rarity}`) })); if (this.inv.open) this.inv.render(); saveProgress(this.sim.progress); });
   }

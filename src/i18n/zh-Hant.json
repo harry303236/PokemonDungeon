@@ -1,7 +1,7 @@
 {
  "title.subtitle": "地城刷寶原型", "title.new": "按 Enter 開始新遊戲", "title.continue": "按 C 繼續（Lv{level}，最深 {floor} 層）",
  "hud.floor": "第 {floor}/{max} 層", "hud.level": "Lv{level}", "hud.exitOpen": "出口已開啟！前往綠色光圈", "hud.kills": "擊倒 {k}/{need}",
- "hud.dead": "倒下了…按 R 重新挑戰本層", "hud.victory": "通關！擊敗了大岩蛇。按 Enter 回標題", "hud.levelup": "升級！Lv{level}", "hud.loot": "撿到 {rarity} 物品",
+ "hud.dead": "倒下了…按 R 重新挑戰本層", "hud.victory": "通關！擊敗了大岩蛇。按 Enter 回標題", "hud.levelup": "升級！Lv{level}", "hud.evolve.1": "進化成火恐龍！噴射火焰範圍變大", "hud.evolve.2": "進化成噴火龍！噴射火焰範圍大幅提升", "hud.loot": "撿到 {rarity} 物品",
  "hud.help": "WASD 移動｜滑鼠瞄準｜左鍵 火花｜右鍵/1 噴射火焰｜2 火焰旋渦｜3 大字爆炎｜4 閃焰衝鋒｜Space 閃避｜I 背包",
  "move.ember": "火花", "move.flamethrower": "噴射火焰", "move.fire-spin": "火焰旋渦", "move.fire-blast": "大字爆炎", "move.flare-blitz": "閃焰衝鋒",
  "rarity.common": "普通", "rarity.uncommon": "精良", "rarity.rare": "稀有", "rarity.epic": "史詩", "rarity.legendary": "傳說",

@@ -94,3 +94,25 @@ describe('sim smoke', () => {
     expect(cleared).toBeGreaterThanOrEqual(2); expect(sim.floorNo).toBeGreaterThanOrEqual(3); expect(sim.progress.level).toBeGreaterThan(5);
   });
 });
+
+describe('evolution move buff', () => {
+  const beam = (sim: Sim): { len: number; width: number } => {
+    sim.cooldowns.clear(); sim.energy = 100;
+    sim.tryCast('flamethrower', sim.player.x + 100, sim.player.y);
+    const b = sim.world.query('beam').at(-1);
+    return { len: b?.len ?? 0, width: b?.width ?? 0 };
+  };
+  it('flamethrower grows at Lv16 and Lv36, with evolve events', () => {
+    const sim = new Sim(newProgress(5)); const stages: number[] = [];
+    sim.bus.on('player:evolve', (e) => stages.push(e.stage));
+    const b0 = beam(sim);
+    sim.debugLevelUp(true); expect(sim.progress.level).toBe(16); expect(sim.speciesId).toBe('charmeleon');
+    const b1 = beam(sim);
+    sim.debugLevelUp(true); expect(sim.progress.level).toBe(36); expect(sim.speciesId).toBe('charizard');
+    const b2 = beam(sim);
+    expect(stages).toEqual([1, 2]);
+    expect(b1.len).toBeGreaterThan(b0.len); expect(b1.width).toBeGreaterThan(b0.width);
+    expect(b2.len).toBeGreaterThan(b1.len); expect(b2.width).toBeGreaterThan(b1.width);
+  });
+  it('L adds exactly one level', () => { const sim = new Sim(newProgress(5)); sim.debugLevelUp(); expect(sim.progress.level).toBe(6); });
+});
