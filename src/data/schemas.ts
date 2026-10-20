@@ -26,7 +26,7 @@ export type MoveData = z.infer<typeof MoveSchema>;
 
 export const MonsterSchema = z.object({
   id: z.string(), speciesId: z.string(), ai: z.enum(['melee-rusher','ranged-kiter','burrower']),
-  hpMult: z.number(), xpMult: z.number(), move: z.string(), color: z.string(), radius: z.number(),
+  boss: z.boolean(), hpMult: z.number(), xpMult: z.number(), move: z.string(), color: z.string(), radius: z.number(),
 });
 export type MonsterData = z.infer<typeof MonsterSchema>;
 
