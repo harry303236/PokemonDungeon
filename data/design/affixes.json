@@ -1,0 +1,10 @@
+[
+ {"id":"power","kind":"stat","stat":"power","min":0.08,"max":0.2},
+ {"id":"cdr","kind":"stat","stat":"cdr","min":0.05,"max":0.12},
+ {"id":"leech","kind":"stat","stat":"leech","min":0.02,"max":0.05},
+ {"id":"extra-projectile","kind":"shape","requiresMove":"ember"},
+ {"id":"pierce","kind":"shape","requiresMove":"ember"},
+ {"id":"kindling","kind":"trigger"},
+ {"id":"split-flame","kind":"shape","requiresMove":"flamethrower"},
+ {"id":"all-in","kind":"cost"}
+]
