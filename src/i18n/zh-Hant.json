@@ -1,0 +1,13 @@
+{
+ "title.subtitle": "地城刷寶原型", "title.new": "按 Enter 開始新遊戲", "title.continue": "按 C 繼續（Lv{level}，最深 {floor} 層）",
+ "hud.floor": "第 {floor}/{max} 層", "hud.level": "Lv{level}", "hud.exitOpen": "出口已開啟！前往綠色光圈", "hud.kills": "擊倒 {k}/{need}",
+ "hud.dead": "倒下了…按 R 重新挑戰本層", "hud.victory": "通關！擊敗了大岩蛇。按 Enter 回標題", "hud.levelup": "升級！Lv{level}", "hud.loot": "撿到 {rarity} 物品",
+ "hud.help": "WASD 移動｜滑鼠瞄準｜左鍵 火花｜右鍵/1 噴射火焰｜2 火焰旋渦｜3 大字爆炎｜4 閃焰衝鋒｜Space 閃避｜I 背包",
+ "move.ember": "火花", "move.flamethrower": "噴射火焰", "move.fire-spin": "火焰旋渦", "move.fire-blast": "大字爆炎", "move.flare-blitz": "閃焰衝鋒",
+ "rarity.common": "普通", "rarity.uncommon": "精良", "rarity.rare": "稀有", "rarity.epic": "史詩", "rarity.legendary": "傳說",
+ "slot.held": "攜帶道具", "slot.tm-ember": "火花 TM", "slot.tm-flamethrower": "噴射火焰 TM",
+ "affix.power": "傷害 +{pct}%", "affix.cdr": "冷卻 -{pct}%", "affix.leech": "吸血 {pct}%", "affix.extra-projectile": "〔多重火花〕火花 +1 發",
+ "affix.pierce": "〔貫穿〕火花穿透 +2", "affix.kindling": "〔引火〕火招灼傷率 +15%", "affix.split-flame": "〔分裂炎〕噴射火焰分成 3 道", "affix.all-in": "〔孤注一擲〕HP<25% 時能量消耗 0",
+ "inv.title": "背包（點擊物品裝備）", "inv.equipped": "已裝備", "inv.empty": "（空）", "inv.close": "按 I 關閉",
+ "inv.err.shape-limit": "無法裝備：每個 TM 最多 1 個形狀詞綴", "inv.err.cost-limit": "無法裝備：全身最多 1 個代價詞綴"
+}

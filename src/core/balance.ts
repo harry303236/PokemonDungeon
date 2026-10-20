@@ -13,4 +13,5 @@ export const BALANCE = {
   pickupRadius: 28, // TUNE
   dropChance: 0.35, // TUNE
   monsterAggro: 320, // TUNE
+  monsterHpScale: 0.35, // TUNE: ARPG pacing, so trash dies in ~5 basic hits
 } as const;

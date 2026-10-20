@@ -90,7 +90,7 @@ export class Sim {
 
   spawnMonster(id: string, x: number, y: number, level: number, boss = false): Entity {
     const md = monsterData(id); const sp = speciesData(md.speciesId);
-    const st = calcStats(sp, level, md.hpMult * BALANCE.tierHp ** (this.floorNo - 1));
+    const st = calcStats(sp, level, md.hpMult * BALANCE.monsterHpScale * BALANCE.tierHp ** (this.floorNo - 1));
     return this.world.spawn({ kind: 'monster', x, y, r: md.radius, team: 'enemy', hp: st.maxHp, maxHp: st.maxHp, stats: st, level, types: sp.types,
       speciesId: sp.id, monsterId: id, ai: { cd: this.rng.range(0.5, 1.5), windup: 0, state: 'idle' }, isBoss: boss });
   }
