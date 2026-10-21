@@ -71,6 +71,9 @@ export class Sim {
   /** 'Sunny day' weather timer (director reactions sun_chain / ground_sun). No in-game source yet: debug Shift+K. */
   sunT = 0;
   private trailAcc = 0;
+  private moveTrail = 0;
+  private dashHitCount = new Map<number, { n: number; t: number }>();
+  private combo = 0; private comboT = -9;
   /** reaction once-per-object-per-frame guard (cleared every step) */
   private reactedThisFrame = new Set<string>();
   bon: PlayerBonuses = emptyBonuses();
@@ -195,6 +198,7 @@ export class Sim {
       if (cmd.taps?.some(Boolean)) this.dashTaps = this.dashTaps.map((v, i) => v || !!cmd.taps?.[i]);
       const d = p.dash; d.t -= dt;
       this.moveEntity(p, d.dirX * d.speed * dt, d.dirY * d.speed * dt);
+      if (!d.moveId && this.bon.keystones.has('ks_skyGlide')) { this.moveTrail += d.speed * dt; if (this.moveTrail >= 28) { this.moveTrail = 0; this.spawnGround('fire', p.x, p.y, 3, p.id); } } // ks_skyGlide
       if (d.moveId) { this.dashHits(p); this.dashExtras(p, d.speed * dt, d.t <= 0); }
       if (d.t <= 0) p.dash = undefined;
       return;
@@ -209,7 +213,7 @@ export class Sim {
     if (cmd.moveTo) this.orderMove(cmd.moveTo.x, cmd.moveTo.y);
     if (cmd.attackTarget !== undefined) this.order = { kind: 'attack', target: cmd.attackTarget, path: [], repath: 0 };
     const len = Math.hypot(cmd.moveX, cmd.moveY);
-    if (len > 0) { this.order = null; const sp = (p.stats?.moveSpeed ?? 160) * dt; this.moveEntity(p, (cmd.moveX / len) * sp, (cmd.moveY / len) * sp); }
+    if (len > 0) { this.order = null; const sp = (p.stats?.moveSpeed ?? 160) * dt; this.moveEntity(p, (cmd.moveX / len) * sp, (cmd.moveY / len) * sp); this.walkTrail(sp); }
     else if (cmd.forceAttack) { this.order = null; const a = this.primaryAttack(); if (a) this.tryCast(a, cmd.aimX, cmd.aimY); }
     else this.followOrder(dt);
     const dashTaps = this.dashTaps; this.dashTaps = [false, false, false, false, false];
@@ -246,10 +250,16 @@ export class Sim {
     this.order = { kind: 'move', path: pts, goal };
     return true;
   }
+  /** trailIgnite: walking leaves short-lived fire (direct dmg scaled by trailDmgPct). */
+  private walkTrail(dist: number): void {
+    if (this.bon.trailIgnite <= 0) return; this.moveTrail += dist; if (this.moveTrail < 40) return; this.moveTrail = 0;
+    this.spawnGround('fire', this.player.x, this.player.y, 1.5, this.player.id, 0.08 * (1 + this.bon.trailDmgPct / 100));
+  }
   private stepAlong(path: Pt[], dt: number): void {
     const p = this.player; let budget = (p.stats?.moveSpeed ?? 160) * dt;
     while (budget > 0 && path.length) {
       const wp = path[0] as Pt; const dx = wp.x - p.x, dy = wp.y - p.y; const d = Math.hypot(dx, dy);
+      this.walkTrail(Math.min(d, budget));
       if (d <= budget) { this.moveEntity(p, dx, dy); budget -= d; path.shift(); }
       else { this.moveEntity(p, (dx / d) * budget, (dy / d) * budget); p.rot = Math.atan2(dy, dx); budget = 0; }
     }
@@ -323,7 +333,7 @@ export class Sim {
       case 'dash': {
         const spd = pr.speed ?? 1000;
         p.dash = { t: (pr.distance ?? 200) / spd, dirX: Math.cos(ang), dirY: Math.sin(ang), speed: spd, hit: false, moveId: id };
-        p.iframes = Math.max(p.iframes ?? 0, p.dash.t); p.hitSet = new Set(); p.mods = mods; this.trailAcc = 0;
+        p.iframes = Math.max(p.iframes ?? 0, p.dash.t); p.hitSet = new Set(); p.mods = mods; this.trailAcc = 0; this.dashHitCount.clear();
         break;
       }
       default: break;
@@ -347,7 +357,7 @@ export class Sim {
     return buildMoveSpec(base, this.build.modifiersFor(id, this.equipModifiers(eq), this.bon)).spec;
   }
   private spawnProjectile(id: string, x: number, y: number, a: number, mods: MoveMods, hitSet: Set<number>, pierce: number, chain: number, fork: number, dmgMult = 1, chainJumps = 0): void {
-    const pr = mods.spec?.params ?? moveData(id).params; const spd = pr.speed ?? 500;
+    const pr = mods.spec?.params ?? moveData(id).params; const spd = (pr.speed ?? 500) * (1 + this.bon.projSpeedPct / 100);
     this.world.spawn({ kind: 'projectile', x, y, vx: Math.cos(a) * spd, vy: Math.sin(a) * spd, rot: a, r: pr.radius ?? 8, team: 'player', owner: this.player.id,
       moveId: id, life: (pr.range ?? 400) / spd, hitSet, pierce, chain, fork, mods, dmgMult, chainJumps });
   }
@@ -358,7 +368,7 @@ export class Sim {
     for (const rule of reactionsFor('dash')) {
       if (rule.requires !== 'zone:own' || !triggerMatches(rule.trigger, sp.tags, sp.moveId, sp.variant)) continue;
       for (const z of this.world.query('zone')) if (!z.follow && z.team === 'player' && Math.hypot(z.x - p.x, z.y - p.y) < z.r) {
-        z.follow = true; z.r *= this.num(rule, 'scale', 0.7); this.bus.emit('reaction', { id: rule.id, x: p.x, y: p.y, r: z.r, vfx: rule.vfx });
+        z.follow = true; z.scale = this.num(rule, 'scale', 0.7); z.r *= z.scale; this.bus.emit('reaction', { id: rule.id, x: p.x, y: p.y, r: z.r, vfx: rule.vfx });
       }
     }
     if (ending && sp.flags.ramPull) {
@@ -366,7 +376,7 @@ export class Sim {
       for (const m of this.hash.near(p.x, p.y, R + 20)) {
         if (m.dead) continue; const dx = p.x - m.x, dy = p.y - m.y; const d = Math.hypot(dx, dy); if (d > R) continue;
         const pull = Math.max(0, d - 28); if (d > 0) this.moveEntity(m, (dx / d) * pull, (dy / d) * pull);
-        if (m.isBoss) { if (sp.flags.ramBossVulnPct) this.applyStatus(m, 'dmg-vuln', 3, p.id); } else if (sp.flags.ramStun) this.applyStatus(m, 'stun', sp.flags.ramStun, p.id);
+        if (m.isBoss) { if (sp.flags.ramBossVulnPct) this.applyStatus(m, 'dmg-vuln', 3, p.id); } else if (sp.flags.ramStun) this.applyStatus(m, 'stun', sp.flags.ramStun * (1 + this.bon.stunDurPct / 100), p.id);
       }
       this.bus.emit('vfx', { key: 'fc-ram', x: p.x, y: p.y, r: R });
     }
@@ -376,8 +386,10 @@ export class Sim {
     const id = p.dash?.moveId; if (!id) return;
     const w = (moveData(id).params.width ?? 40) / 2;
     for (const m of this.hash.near(p.x, p.y, w + 40)) {
-      if (m.dead || p.hitSet?.has(m.id) || Math.hypot(m.x - p.x, m.y - p.y) > w + m.r) continue;
-      p.hitSet?.add(m.id);
+      // flameChargeHits: each enemy can be hit 1 + N times per charge (>= 0.06 s apart)
+      const hc = this.dashHitCount.get(m.id); const maxHits = 1 + this.bon.flameChargeHits;
+      if (m.dead || Math.hypot(m.x - p.x, m.y - p.y) > w + m.r || (hc && (hc.n >= maxHits || this.time - hc.t < 0.06))) continue;
+      this.dashHitCount.set(m.id, { n: (hc?.n ?? 0) + 1, t: this.time }); p.hitSet?.add(m.id);
       const dealt = this.hit(p, m, id, 1, p.mods, newChain(this.rootSeq++));
       const recoil = moveData(id).params.recoil ?? 0;
       if (recoil > 0 && p.hp !== undefined) p.hp = Math.max(1, p.hp - Math.round(dealt * recoil));
@@ -399,7 +411,17 @@ export class Sim {
     const a = src.stats; const d = target.stats;
     if (!a || !d) return 0;
     const phys = m.category === 'physical';
-    const isCrit = this.rng.next() < BALANCE.critChance + (src.team === 'player' ? this.bon.critPct / 100 : 0);
+    const mine = src.team === 'player'; const kb = this.bon.keystones;
+    const isCrit = this.rng.next() < BALANCE.critChance + (mine ? (this.bon.critPct + (m.type === 'fire' ? this.bon.fireCritPct : 0)) / 100 : 0);
+    if (mine) {
+      if (isCrit) mult *= 1 + this.bon.critDmgPct / 100;
+      // ks_blaze: +6% fire dmg per 10% HP lost (max +45%)
+      if (kb.has('ks_blaze') && m.type === 'fire' && src.maxHp) mult *= 1 + Math.min(0.45, Math.floor((1 - (src.hp ?? 0) / src.maxHp) * 10) * 0.06);
+      // ks_solarPower: special attack x1.5 during Sunny Day
+      if (kb.has('ks_solarPower') && this.sunT > 0 && m.category === 'special') mult *= 1.5;
+      // comboStack: consecutive hits (<1.5 s apart) stack +2%/stack per rank, max 10 stacks
+      if (this.bon.comboStack > 0 && target.kind === 'monster') { this.combo = this.time - this.comboT < 1.5 ? Math.min(10, this.combo + 1) : 1; this.comboT = this.time; mult *= 1 + 0.02 * this.combo * this.bon.comboStack; }
+    }
     const tierDmg = src.team === 'enemy' ? BALANCE.tierDmg ** (this.floorNo - 1) : 1;
     const { dmg, typeEff } = calcDamage({ level: src.level ?? 1, power: m.power, atk: phys ? a.atk : a.spa, def: phys ? d.def : d.spd, moveType: m.type,
       attackerTypes: src.types ?? [], defenderTypes: target.types ?? [], isCrit, roll: this.rng.next(), bonus: mods?.powerBonus ?? 0, mult: mult * tierDmg,
@@ -449,7 +471,7 @@ export class Sim {
         this.detonateSeeds(seed, src, spec, mods, rule, chain);
       } else if (req === 'status:burn') {
         const b = target.burn; if (!b || !pre.burn || target.hp === undefined || !target.maxHp) continue; this.reactedThisFrame.add(once);
-        const left = target.maxHp * (target.isBoss ? BALANCE.burnPctBoss : BALANCE.burnPctPerSec) * b.stacks * b.t * (1 + this.bon.burnDmgPct / 100) * this.num(rule, 'mult', 1.5);
+        const left = target.maxHp * (target.isBoss ? BALANCE.burnPctBoss : BALANCE.burnPctPerSec) * b.stacks * b.t * (1 + this.bon.burnDmgPct / 100) * this.num(rule, 'mult', 1.5) * (1 + this.bon.burnConsumeMultPct / 100);
         target.burn = undefined; target.hp -= left;
         this.bus.emit('damage:dealt', { target: target.id, amount: Math.round(left), isCrit: true, typeEff: 1, x: target.x, y: target.y - target.r });
         this.bus.emit('reaction', { id: rule.id, x: target.x, y: target.y, r: 50, vfx: rule.vfx });
@@ -482,17 +504,19 @@ export class Sim {
       for (const g of this.world.query('ground')) if (g.sub === 'seed' && !g.dead && Math.hypot(g.x - s0.x, g.y - s0.y) < range) { g.dead = true; queue.push([g, s0]); }
     }
   }
-  spawnGround(sub: 'seed' | 'fire', x: number, y: number, life: number, owner: number): void {
-    if (sub === 'fire' && this.sunT > 0) for (const rule of reactionsFor('ground')) if (rule.requires === 'weather:sun') { life *= this.num(rule, 'mult', 2); this.bus.emit('reaction', { id: rule.id, x, y, r: 40, vfx: rule.vfx }); }
+  spawnGround(sub: 'seed' | 'fire', x: number, y: number, life: number, owner: number, dmgMult?: number): void {
+    let sunlit = false;
+    if (sub === 'fire' && this.sunT > 0) for (const rule of reactionsFor('ground')) if (rule.requires === 'weather:sun') { life *= this.num(rule, 'mult', 2); sunlit = true; }
     const list = this.world.query('ground').filter((g) => g.sub === sub);
     if (list.length >= (sub === 'seed' ? 12 : 40)) { const old = list[0]; if (old) old.dead = true; }
-    this.world.spawn({ kind: 'ground', sub, x, y, r: sub === 'seed' ? 14 : 30, team: 'player', owner, life, tick: 0.5, tickT: 0 });
+    this.world.spawn({ kind: 'ground', sub, x, y, r: sub === 'seed' ? 14 : 30, team: 'player', owner, life, tick: 0.5, tickT: 0, sunlit, dmgMult });
   }
   /** Damage multiplier for one chain jump: variant step (ft_focus -20%) + sun_chain bonus. */
   private chainStepMult(spec: MoveSpec | undefined, from: Entity, to: Entity): number {
     let k = 1 + (spec?.flags.chainDmgStep ?? 0);
-    if (this.sunT > 0) for (const rule of reactionsFor('chain')) if (rule.requires === 'weather:sun') { k += this.num(rule, 'perJump', 0.1); this.bus.emit('reaction', { id: rule.id, x: to.x, y: to.y, r: 20, vfx: rule.vfx, x2: from.x, y2: from.y }); }
-    this.bus.emit('vfx', { key: 'chain-line', x: to.x, y: to.y, x2: from.x, y2: from.y });
+    let sun = false;
+    if (this.sunT > 0) for (const rule of reactionsFor('chain')) if (rule.requires === 'weather:sun') { k += this.num(rule, 'perJump', 0.1); sun = true; this.bus.emit('reaction', { id: rule.id, x: to.x, y: to.y, r: 20, vfx: rule.vfx, x2: from.x, y2: from.y }); }
+    if (!sun) this.bus.emit('vfx', { key: 'chain-line', x: to.x, y: to.y, x2: from.x, y2: from.y }); // under sun the sun-chain line replaces it
     return k;
   }
   debugSun(sec = 10): void { this.sunT = sec; }
@@ -512,6 +536,7 @@ export class Sim {
     if (t.isBoss) this.bossAlive = false;
     const md = monsterData(t.monsterId ?? '');
     const sp = speciesData(md.speciesId);
+    if (this.bon.keystones.has('ks_solarPower') && this.sunT > 0) { const P = this.player; if (P.maxHp && P.hp !== undefined) P.hp = Math.min(P.maxHp, P.hp + P.maxHp * 0.03); }
     this.gainXp(Math.round(((sp.baseExp * (t.level ?? 1)) / 7) * md.xpMult));
     // build currencies: gold always, ash shard / support gem sometimes (TUNE)
     const b = this.build.s; b.gold += Math.round((t.level ?? 1) * (t.isBoss ? 20 : 2));
@@ -609,7 +634,7 @@ export class Sim {
       }
       else if (e.kind === 'ground' && e.sub === 'fire') {
         e.tickT = (e.tickT ?? 0) - dt;
-        if (e.tickT <= 0) { e.tickT += e.tick ?? 0.5; for (const t of this.hash.near(e.x, e.y, e.r + 30)) if (!t.dead && Math.hypot(t.x - e.x, t.y - e.y) < e.r + t.r) this.applyBurn(t, p.id); }
+        if (e.tickT <= 0) { e.tickT += e.tick ?? 0.5; for (const t of this.hash.near(e.x, e.y, e.r + 30)) if (!t.dead && Math.hypot(t.x - e.x, t.y - e.y) < e.r + t.r) { this.applyBurn(t, p.id); if (e.dmgMult) this.hit(p, t, BASIC, e.dmgMult, undefined, newChain(this.rootSeq++)); } }
       }
       if (e.life <= 0) e.dead = true;
     }
@@ -632,6 +657,8 @@ export class Sim {
   }
 
   private statusStep(dt: number): void {
+    const P = this.player;
+    if (this.bon.keystones.has('ks_solarPower') && this.sunT > 0 && !P.dead && P.maxHp && P.hp !== undefined) P.hp = Math.max(1, P.hp - P.maxHp * 0.01 * dt); // solar drain
     for (const e of [...this.world.query('monster'), this.player]) {
       if (e.dead || e.hp === undefined || !e.maxHp) continue;
       if (e.burn) {

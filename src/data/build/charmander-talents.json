@@ -21,11 +21,17 @@
    "full": "gold, scales with level"
   },
   "branchCost": {
-   "sun": 39,
-   "claw": 39,
-   "wing": 39
+   "烈陽焚天": 29,
+   "龍爪狂襲": 29,
+   "灼燒之翼": 29
   },
-  "notes": "Branch cost > half of 49 so two full branches impossible; keystone exclusiveGroup allows only one."
+  "notes": "Branch cost > half of 49 so two full branches impossible; keystone exclusiveGroup allows only one.",
+  "ui": {
+   "drawPrereqLines": true,
+   "keystonePinnedTop": true,
+   "hideUnimplemented": true,
+   "pointsMustEqualLevelMinus1": true
+  }
  },
  "nodes": [
   {
@@ -69,36 +75,8 @@
    "exclusiveGroup": null
   },
   {
-   "id": "sun_t1_3",
-   "name": "餘燼",
-   "branch": "烈陽焚天",
-   "tier": 1,
-   "evoStage": 1,
-   "effectType": "burnDmgPct",
-   "value": 8,
-   "maxRank": 3,
-   "requires": [
-    "root"
-   ],
-   "exclusiveGroup": null
-  },
-  {
-   "id": "sun_t1_4",
-   "name": "晴空延長",
-   "branch": "烈陽焚天",
-   "tier": 1,
-   "evoStage": 1,
-   "effectType": "sunDurationPct",
-   "value": 15,
-   "maxRank": 3,
-   "requires": [
-    "root"
-   ],
-   "exclusiveGroup": null
-  },
-  {
    "id": "sun_t1_mid",
-   "name": "擴散火舌",
+   "name": "擴散火舌：噴射火焰變寬",
    "branch": "烈陽焚天",
    "tier": 1,
    "evoStage": 1,
@@ -113,13 +91,13 @@
   },
   {
    "id": "sun_t2_0",
-   "name": "灼熱之心",
+   "name": "餘燼",
    "branch": "烈陽焚天",
    "tier": 2,
    "evoStage": 2,
-   "effectType": "spAtkPct",
-   "value": 4,
-   "maxRank": 3,
+   "effectType": "burnDmgPct",
+   "value": 8,
+   "maxRank": 5,
    "requires": [
     "sun_t1_mid"
    ],
@@ -127,41 +105,13 @@
   },
   {
    "id": "sun_t2_1",
-   "name": "引燃",
-   "branch": "烈陽焚天",
-   "tier": 2,
-   "evoStage": 2,
-   "effectType": "burnChancePct",
-   "value": 5,
-   "maxRank": 3,
-   "requires": [
-    "sun_t1_mid"
-   ],
-   "exclusiveGroup": null
-  },
-  {
-   "id": "sun_t2_3",
-   "name": "餘燼",
-   "branch": "烈陽焚天",
-   "tier": 2,
-   "evoStage": 2,
-   "effectType": "burnDmgPct",
-   "value": 8,
-   "maxRank": 3,
-   "requires": [
-    "sun_t1_mid"
-   ],
-   "exclusiveGroup": null
-  },
-  {
-   "id": "sun_t2_4",
    "name": "晴空延長",
    "branch": "烈陽焚天",
    "tier": 2,
    "evoStage": 2,
    "effectType": "sunDurationPct",
    "value": 15,
-   "maxRank": 3,
+   "maxRank": 5,
    "requires": [
     "sun_t1_mid"
    ],
@@ -184,13 +134,13 @@
   },
   {
    "id": "sun_t3_0",
-   "name": "灼熱之心",
+   "name": "烈陽之眼",
    "branch": "烈陽焚天",
    "tier": 3,
    "evoStage": 3,
-   "effectType": "spAtkPct",
+   "effectType": "fireCritPct",
    "value": 4,
-   "maxRank": 3,
+   "maxRank": 5,
    "requires": [
     "sun_t2_mid"
    ],
@@ -198,41 +148,13 @@
   },
   {
    "id": "sun_t3_1",
-   "name": "引燃",
+   "name": "焚盡",
    "branch": "烈陽焚天",
    "tier": 3,
    "evoStage": 3,
-   "effectType": "burnChancePct",
-   "value": 5,
-   "maxRank": 3,
-   "requires": [
-    "sun_t2_mid"
-   ],
-   "exclusiveGroup": null
-  },
-  {
-   "id": "sun_t3_3",
-   "name": "餘燼",
-   "branch": "烈陽焚天",
-   "tier": 3,
-   "evoStage": 3,
-   "effectType": "burnDmgPct",
-   "value": 8,
-   "maxRank": 3,
-   "requires": [
-    "sun_t2_mid"
-   ],
-   "exclusiveGroup": null
-  },
-  {
-   "id": "sun_t3_4",
-   "name": "晴空延長",
-   "branch": "烈陽焚天",
-   "tier": 3,
-   "evoStage": 3,
-   "effectType": "sunDurationPct",
-   "value": 15,
-   "maxRank": 3,
+   "effectType": "burnConsumeMultPct",
+   "value": 10,
+   "maxRank": 5,
    "requires": [
     "sun_t2_mid"
    ],
@@ -251,7 +173,8 @@
     "sun_t3_0",
     "sun_t3_1"
    ],
-   "exclusiveGroup": "keystone"
+   "exclusiveGroup": "keystone",
+   "uiPin": "top"
   },
   {
    "id": "claw_t1_0",
@@ -282,34 +205,6 @@
    "exclusiveGroup": null
   },
   {
-   "id": "claw_t1_3",
-   "name": "弱點",
-   "branch": "龍爪狂襲",
-   "tier": 1,
-   "evoStage": 1,
-   "effectType": "critPct",
-   "value": 3,
-   "maxRank": 3,
-   "requires": [
-    "root"
-   ],
-   "exclusiveGroup": null
-  },
-  {
-   "id": "claw_t1_4",
-   "name": "鱗甲",
-   "branch": "龍爪狂襲",
-   "tier": 1,
-   "evoStage": 1,
-   "effectType": "defPct",
-   "value": 4,
-   "maxRank": 3,
-   "requires": [
-    "root"
-   ],
-   "exclusiveGroup": null
-  },
-  {
    "id": "claw_t1_mid",
    "name": "閃焰衝鋒多一段判定",
    "branch": "龍爪狂襲",
@@ -326,13 +221,13 @@
   },
   {
    "id": "claw_t2_0",
-   "name": "利爪",
+   "name": "弱點",
    "branch": "龍爪狂襲",
    "tier": 2,
    "evoStage": 2,
-   "effectType": "atkPct",
-   "value": 4,
-   "maxRank": 3,
+   "effectType": "critPct",
+   "value": 3,
+   "maxRank": 5,
    "requires": [
     "claw_t1_mid"
    ],
@@ -340,41 +235,13 @@
   },
   {
    "id": "claw_t2_1",
-   "name": "嗜焰",
-   "branch": "龍爪狂襲",
-   "tier": 2,
-   "evoStage": 2,
-   "effectType": "meleeLifestealPct",
-   "value": 1,
-   "maxRank": 3,
-   "requires": [
-    "claw_t1_mid"
-   ],
-   "exclusiveGroup": null
-  },
-  {
-   "id": "claw_t2_3",
-   "name": "弱點",
-   "branch": "龍爪狂襲",
-   "tier": 2,
-   "evoStage": 2,
-   "effectType": "critPct",
-   "value": 3,
-   "maxRank": 3,
-   "requires": [
-    "claw_t1_mid"
-   ],
-   "exclusiveGroup": null
-  },
-  {
-   "id": "claw_t2_4",
    "name": "鱗甲",
    "branch": "龍爪狂襲",
    "tier": 2,
    "evoStage": 2,
    "effectType": "defPct",
    "value": 4,
-   "maxRank": 3,
+   "maxRank": 5,
    "requires": [
     "claw_t1_mid"
    ],
@@ -397,13 +264,13 @@
   },
   {
    "id": "claw_t3_0",
-   "name": "利爪",
+   "name": "撕裂",
    "branch": "龍爪狂襲",
    "tier": 3,
    "evoStage": 3,
-   "effectType": "atkPct",
-   "value": 4,
-   "maxRank": 3,
+   "effectType": "critDmgPct",
+   "value": 8,
+   "maxRank": 5,
    "requires": [
     "claw_t2_mid"
    ],
@@ -411,41 +278,13 @@
   },
   {
    "id": "claw_t3_1",
-   "name": "嗜焰",
+   "name": "震懾",
    "branch": "龍爪狂襲",
    "tier": 3,
    "evoStage": 3,
-   "effectType": "meleeLifestealPct",
-   "value": 1,
-   "maxRank": 3,
-   "requires": [
-    "claw_t2_mid"
-   ],
-   "exclusiveGroup": null
-  },
-  {
-   "id": "claw_t3_3",
-   "name": "弱點",
-   "branch": "龍爪狂襲",
-   "tier": 3,
-   "evoStage": 3,
-   "effectType": "critPct",
-   "value": 3,
-   "maxRank": 3,
-   "requires": [
-    "claw_t2_mid"
-   ],
-   "exclusiveGroup": null
-  },
-  {
-   "id": "claw_t3_4",
-   "name": "鱗甲",
-   "branch": "龍爪狂襲",
-   "tier": 3,
-   "evoStage": 3,
-   "effectType": "defPct",
-   "value": 4,
-   "maxRank": 3,
+   "effectType": "stunDurPct",
+   "value": 10,
+   "maxRank": 5,
    "requires": [
     "claw_t2_mid"
    ],
@@ -464,7 +303,8 @@
     "claw_t3_0",
     "claw_t3_1"
    ],
-   "exclusiveGroup": "keystone"
+   "exclusiveGroup": "keystone",
+   "uiPin": "top"
   },
   {
    "id": "wing_t1_0",
@@ -495,34 +335,6 @@
    "exclusiveGroup": null
   },
   {
-   "id": "wing_t1_3",
-   "name": "殘影",
-   "branch": "灼燒之翼",
-   "tier": 1,
-   "evoStage": 1,
-   "effectType": "evasionPct",
-   "value": 3,
-   "maxRank": 3,
-   "requires": [
-    "root"
-   ],
-   "exclusiveGroup": null
-  },
-  {
-   "id": "wing_t1_4",
-   "name": "氣流",
-   "branch": "灼燒之翼",
-   "tier": 1,
-   "evoStage": 1,
-   "effectType": "ppRegenPct",
-   "value": 6,
-   "maxRank": 3,
-   "requires": [
-    "root"
-   ],
-   "exclusiveGroup": null
-  },
-  {
    "id": "wing_t1_mid",
    "name": "可邊移動邊施放",
    "branch": "灼燒之翼",
@@ -539,13 +351,13 @@
   },
   {
    "id": "wing_t2_0",
-   "name": "疾風",
+   "name": "殘影",
    "branch": "灼燒之翼",
    "tier": 2,
    "evoStage": 2,
-   "effectType": "speedPct",
+   "effectType": "evasionPct",
    "value": 3,
-   "maxRank": 3,
+   "maxRank": 5,
    "requires": [
     "wing_t1_mid"
    ],
@@ -553,41 +365,13 @@
   },
   {
    "id": "wing_t2_1",
-   "name": "翻滾",
-   "branch": "灼燒之翼",
-   "tier": 2,
-   "evoStage": 2,
-   "effectType": "dodgeCdPct",
-   "value": -6,
-   "maxRank": 3,
-   "requires": [
-    "wing_t1_mid"
-   ],
-   "exclusiveGroup": null
-  },
-  {
-   "id": "wing_t2_3",
-   "name": "殘影",
-   "branch": "灼燒之翼",
-   "tier": 2,
-   "evoStage": 2,
-   "effectType": "evasionPct",
-   "value": 3,
-   "maxRank": 3,
-   "requires": [
-    "wing_t1_mid"
-   ],
-   "exclusiveGroup": null
-  },
-  {
-   "id": "wing_t2_4",
    "name": "氣流",
    "branch": "灼燒之翼",
    "tier": 2,
    "evoStage": 2,
    "effectType": "ppRegenPct",
    "value": 6,
-   "maxRank": 3,
+   "maxRank": 5,
    "requires": [
     "wing_t1_mid"
    ],
@@ -610,13 +394,13 @@
   },
   {
    "id": "wing_t3_0",
-   "name": "疾風",
+   "name": "順風",
    "branch": "灼燒之翼",
    "tier": 3,
    "evoStage": 3,
-   "effectType": "speedPct",
-   "value": 3,
-   "maxRank": 3,
+   "effectType": "projSpeedPct",
+   "value": 8,
+   "maxRank": 5,
    "requires": [
     "wing_t2_mid"
    ],
@@ -624,41 +408,13 @@
   },
   {
    "id": "wing_t3_1",
-   "name": "翻滾",
+   "name": "熾尾",
    "branch": "灼燒之翼",
    "tier": 3,
    "evoStage": 3,
-   "effectType": "dodgeCdPct",
-   "value": -6,
-   "maxRank": 3,
-   "requires": [
-    "wing_t2_mid"
-   ],
-   "exclusiveGroup": null
-  },
-  {
-   "id": "wing_t3_3",
-   "name": "殘影",
-   "branch": "灼燒之翼",
-   "tier": 3,
-   "evoStage": 3,
-   "effectType": "evasionPct",
-   "value": 3,
-   "maxRank": 3,
-   "requires": [
-    "wing_t2_mid"
-   ],
-   "exclusiveGroup": null
-  },
-  {
-   "id": "wing_t3_4",
-   "name": "氣流",
-   "branch": "灼燒之翼",
-   "tier": 3,
-   "evoStage": 3,
-   "effectType": "ppRegenPct",
-   "value": 6,
-   "maxRank": 3,
+   "effectType": "trailDmgPct",
+   "value": 10,
+   "maxRank": 5,
    "requires": [
     "wing_t2_mid"
    ],
@@ -677,7 +433,8 @@
     "wing_t3_0",
     "wing_t3_1"
    ],
-   "exclusiveGroup": "keystone"
+   "exclusiveGroup": "keystone",
+   "uiPin": "top"
   }
  ]
 }

@@ -99,8 +99,9 @@ export class DungeonScene extends Phaser.Scene {
     kb?.on('keydown-F1', () => this.help.setVisible(!this.help.visible));
     kb?.on('keydown-TAB', () => this.skills.toggle());
     kb?.on('keydown-I', () => { this.inv.toggle(); this.skills.setOpen(this.inv.open); });
+    this.sim.build.debug = new URLSearchParams(location.search).has('debug') || location.hostname === 'localhost';
     kb?.on('keydown-L', (ev: KeyboardEvent) => { this.sim.debugLevelUp(ev.shiftKey); this.sim.refreshBuild(); }); // debug
-    kb?.on('keydown-K', (ev: KeyboardEvent) => { if (ev.shiftKey) { this.sim.debugSun(15); this.say('☀ 大晴天（除錯 15 秒）'); return; } this.sim.debugGrantBuild(); if (this.skills.open) this.skills.render(); if (this.talents.open) this.talents.render(); }); // debug: +5 talent pts, 1 of each gem, shards, gold
+    kb?.on('keydown-K', (ev: KeyboardEvent) => { if (!this.sim.build.debug) return; if (ev.shiftKey) { this.sim.debugSun(15); this.say('☀ 大晴天（除錯 15 秒）'); return; } this.sim.debugGrantBuild(); if (this.skills.open) this.skills.render(); if (this.talents.open) this.talents.render(); }); // debug: +5 talent pts, 1 of each gem, shards, gold
     kb?.on('keydown-T', () => this.talents.toggle());
     kb?.on('keydown-R', () => { if (this.sim.player.dead) this.sim.respawn(); });
     kb?.on('keydown-ENTER', () => { if (this.sim.victory) { saveProgress(this.sim.progress); this.scene.start('title'); } });

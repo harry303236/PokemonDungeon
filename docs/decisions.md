@@ -60,3 +60,9 @@
 - **Bug fix (CTO)**: hit() snapshots the target's statuses/burn at hit start; settle-stage reactions only consume statuses in that snapshot; new statuses (burn, applies) are applied after reactions and on-hit spawners. Regression test added.
 - `reactionRules`: reaction-generated hits can trigger reactions (depth+1 via child chain), stop at maxDepth 3, and each (rule, entity) fires at most once per sim frame.
 - Rulings applied: requires=ALL ✔, ft_focus `projectile` ✔, fb_star 60%/50% ✔. ft_focus has inherent pierce (hits nearest 3 along the beam); pierce gem = +2 extra (5). fc_ram: bosses aren't stunned, they get `dmg-vuln` (+10% damage taken, 3 s). Gem compatibility at socket time uses *effective* tags (base + chosen variant's added tags), so base Flamethrower refuses `aoe` but ft_spread (adds `area`) accepts it.
+
+## ADR: Talents v2 + meta.ui-driven panel
+- Talent data v2 (28 nodes: 3 branches × (2 small/tier + mid) + keystone, 29 pts/branch). Panel behaviour comes from `meta.ui`:
+  `drawPrereqLines` (SVG lines, lit gold when both ends allocated), `keystonePinnedTop`, `hideUnimplemented` (overrides grey-out; hidden parents are dropped from `requires` so they never block), `pointsMustEqualLevelMinus1` (points = level−1; debug grants count only when `build.debug`, shown separately as 除錯 +N).
+- Debug mode = `?debug` or localhost; K grants only work in debug mode.
+- Implemented: fireCrit/critDmg/burnConsumeMult/stunDur/projSpeed/flameChargeHits/comboStack/trailIgnite/trailDmg; keystones blaze, solarPower, skyGlide. Hidden: `sunDurationPct` (sun_t2_1).

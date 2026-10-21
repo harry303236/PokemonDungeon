@@ -98,8 +98,10 @@ export const gemFits = (gemId: string, moveId: string, tags: string[]): boolean 
 
 /** Build operations. evoStage1 is 1-based (data convention). */
 export class Build {
+  /** debug mode (set by the scene: dev build or ?debug); debug-granted talent points only count here */
+  debug = false;
   constructor(public s: BuildSave, private ctx: () => { level: number; evoStage1: number }) {}
-  private tctx() { const c = this.ctx(); return { level: c.level, evoStage: c.evoStage1, bonusPoints: this.s.bonusPoints }; }
+  tctx() { const c = this.ctx(); return { level: c.level, evoStage: c.evoStage1, bonusPoints: this.s.bonusPoints, debug: this.debug }; }
   pointsLeft(): number { return pointsTotal(TALENTS, this.tctx()) - pointsSpent(this.s.talents); }
   allocate(id: string): { ok: boolean; reason?: string } {
     const r = canAllocate(TALENTS, this.s.talents, id, this.tctx()); if (!r.ok) return r;

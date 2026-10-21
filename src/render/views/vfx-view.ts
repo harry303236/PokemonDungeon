@@ -68,7 +68,7 @@ export class VfxView {
   /** Stretch a horizontal sheet (origin left-middle) from (x1,y1) to (x2,y2), play briefly. */
   line(key: string, x1: number, y1: number, x2: number, y2: number, ms = 260): void {
     if (!this.has(key)) return; const d = Math.hypot(x2 - x1, y2 - y1); if (d < 4) return;
-    const s = this.scene.add.sprite(x1, y1, key).setOrigin(0, 0.5).setRotation(Math.atan2(y2 - y1, x2 - x1)).setScale(d / 256, 1).setDepth(6).setBlendMode(Phaser.BlendModes.ADD);
+    const s = this.scene.add.sprite(x1, y1, key).setOrigin(0, 0.5).setRotation(Math.atan2(y2 - y1, x2 - x1)).setScale(d / 256, 1.4).setDepth(8.6).setBlendMode(Phaser.BlendModes.ADD); // above enemies + darkness mask
     s.play(key); this.scene.time.delayedCall(ms, () => s.destroy());
   }
   /** Reaction/one-shot hints from the sim (keys from vfx-index.json; aliases resolved here per _aliases notes). */
@@ -77,7 +77,7 @@ export class VfxView {
     if (e.id === 'seed_detonate') { this.oneShot('vfx-detonate', e.x, e.y, (e.r * 2.4) / 256); if (e.x2 !== undefined && e.y2 !== undefined) this.line('vfx-chain-line', e.x2, e.y2, e.x, e.y); }
     else if (e.id === 'sticky_early') this.oneShot('vfx-detonate', e.x, e.y, 0.5);
     else if (e.id === 'sun_chain' && e.x2 !== undefined && e.y2 !== undefined) this.line('vfx-rx-sun-chain', e.x2, e.y2, e.x, e.y, 320);
-    else if (e.id === 'charge_through_spin') this.oneShot('vfx-fc-comet', e.x, e.y, 0.8);
+    else if (e.id === 'charge_through_spin') { /* ring itself is drawn by the attached zone (scale 0.7, normal blend) */ }
     else if (this.has(k)) this.oneShot(k, e.x, e.y, Math.max(0.5, (e.r * 2.4) / 128));
     else { this.oneShot('vfx-fire-blast', e.x, e.y, (e.r * 2.6) / 256); }
     this.hit(e.x, e.y, true);
@@ -111,7 +111,12 @@ export class VfxView {
           live.add(e.id); const key = `vfx-${variantVfx(bv)}`; const s = this.sprite(e.id, key, 5); if (!s.anims.isPlaying) s.play(key);
           const a = player.rot + e.rot; const len = Math.max(8, (e.reach ?? e.len ?? 300) - 10);
           const mx = pv.x + Math.cos(a) * 14, my = pv.y + Math.sin(a) * 10 - 10;
-          if (bv === 'ft_focus') s.setOrigin(0, 0.5).setPosition(mx, my).setRotation(a).setScale(len / 256, Math.max(0.5, ((e.width ?? 16) * 2.5) / 64));
+          if (bv === 'ft_focus') {
+            const sy = Math.max(0.5, ((e.width ?? 16) * 2.5) / 64) * 1.5; // artist: height x1.5
+            s.setOrigin(0, 0.5).setPosition(mx, my).setRotation(a).setScale(len / 256, sy);
+            const gid = -1e6 - e.id; live.add(gid); const gl = this.sprite(gid, key, 4.9); if (!gl.anims.isPlaying) gl.play(key); // underlay glow
+            gl.setOrigin(0, 0.5).setPosition(mx, my).setRotation(a).setScale(len / 256, sy * 2.2).setAlpha(0.4);
+          }
           else { s.setVisible(Math.abs(e.rot) < 0.01); s.setOrigin(0.1, 0.5).setPosition(mx, my).setRotation(a).setScale((len * 1.1) / 115); } // one fan sprite for the whole spread
           if (Math.random() < 0.3) this.sparks.emitParticleAt(mx + Math.cos(a) * len, my + Math.sin(a) * len, 1);
           continue;
@@ -134,7 +139,8 @@ export class VfxView {
         live.add(e.id); const zk0 = `vfx-${variantVfx(e.mods?.spec?.variant) ?? 'fire-spin'}`; const zk = this.has(zk0) ? zk0 : 'vfx-fire-spin';
         const s = this.sprite(e.id, zk, 0.8); const v = pose(e);
         if (!s.anims.isPlaying) { s.play(zk); if (!e.follow) this.scorch(v.x, v.y, e.r * 0.9); }
-        s.setPosition(v.x, v.y).setScale((e.r * 2.3) / 128);
+        if (e.scale && player.dash) s.setPosition(v.x, v.y).setScale(e.scale).setBlendMode(Phaser.BlendModes.NORMAL); // charge_through_spin: ring 0.7 during charge
+        else s.setPosition(v.x, v.y).setScale((e.r * 2.3) / 128).setBlendMode(Phaser.BlendModes.ADD);
         if (Math.random() < 0.25) this.smoke.emitParticleAt(v.x + (Math.random() - 0.5) * e.r, v.y + (Math.random() - 0.5) * e.r, 1);
       } else if (e.kind === 'blast') {
         live.add(e.id); const v = pose(e); const bv = e.sub === 'sticky' ? 'sticky' : e.mods?.spec?.variant ?? null;
@@ -148,9 +154,11 @@ export class VfxView {
     for (const e of entities2) {
       if (e.dead) continue;
       if (e.kind === 'ground') {
-        const key = e.sub === 'seed' ? 'vfx-status-fire-seed' : 'vfx-ground-fire'; if (!this.has(key)) continue;
+        const sunK = e.sub === 'fire' && e.sunlit && this.has('vfx-rx-ground-sun');
+        const key = e.sub === 'seed' ? 'vfx-status-fire-seed' : sunK ? 'vfx-rx-ground-sun' : 'vfx-ground-fire'; if (!this.has(key)) continue;
         live.add(e.id); const s = this.sprite(e.id, key, e.sub === 'seed' ? 0.75 : 0.65); if (!s.anims.isPlaying) s.play(key);
         s.setPosition(e.x, e.y).setScale(e.sub === 'seed' ? 0.7 : (e.r * 2.6) / 128).setAlpha(Math.min(1, (e.life ?? 1) * 2));
+        if (sunK) s.setBlendMode(Phaser.BlendModes.NORMAL).clearTint(); // ground_sun: tiled sea of fire, normal blend, no additive/white
       } else if (e.kind === 'monster' && e.burn && this.has('vfx-status-burning')) {
         const id = -e.id; live.add(id); const s = this.sprite(id, 'vfx-status-burning', 3); if (!s.anims.isPlaying) s.play('vfx-status-burning');
         const v = pose(e); s.setPosition(v.x, v.y - e.r * 1.6).setScale(0.45);

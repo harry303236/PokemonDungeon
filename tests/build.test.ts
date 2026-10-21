@@ -5,11 +5,11 @@ import { baseSpec, buildMoveSpec, opsModifier, compatible, STAGES, type Modifier
 import { Sim, newProgress } from '../src/core/sim';
 import { newChain } from '../src/core/events/event-bus';
 
-const mkBuild = (level = 10, evo = 1) => { const s = newBuildSave(); const ctx = { level, evoStage1: evo }; return { b: new Build(s, () => ctx), s, ctx }; };
+const mkBuild = (level = 10, evo = 1, debug = true) => { const s = newBuildSave(); const ctx = { level, evoStage1: evo }; const b = new Build(s, () => ctx); b.debug = debug; return { b, s, ctx }; };
 
 describe('talent data validation', () => {
-  it('shipped design file is valid (46 nodes)', () => {
-    expect(TALENTS.nodes.length).toBe(46);
+  it('shipped design file is valid (28 nodes)', () => {
+    expect(TALENTS.nodes.length).toBe(28);
     expect(validateTalentData(TALENTS)).toEqual([]);
   });
   it('catches unknown requires, bad rank, bad evoStage, keystone w/o group, cycles', () => {
@@ -57,6 +57,25 @@ describe('talent data validation', () => {
     warn.mockRestore();
   });
   it('rank multiplies value', () => { expect(talentBonuses(TALENTS, { sun_t1_0: 3 }).spAtkPct).toBe(12); });
+});
+
+describe('talents meta.ui', () => {
+  it('points = level-1; debug grants only count in debug mode', () => {
+    const n = mkBuild(20, 2, false); n.s.bonusPoints = 10; expect(n.b.pointsLeft()).toBe(19);
+    n.b.debug = true; expect(n.b.pointsLeft()).toBe(29);
+  });
+  it('hideUnimplemented: unimplemented nodes are not allocatable and never block their children', () => {
+    expect(TALENTS.meta.ui?.hideUnimplemented).toBe(true);
+    expect(unhandledEffectTypes(TALENTS)).toEqual(['sunDurationPct']);
+    const { b } = mkBuild(50, 3, true); b.s.bonusPoints = 99;
+    for (const id of ['root', 'sun_t1_0', 'sun_t1_1', 'sun_t1_mid', 'sun_t2_0']) expect(b.allocate(id).ok).toBe(true);
+    expect(b.allocate('sun_t2_1').reason).toBe('unimplemented');
+    expect(b.allocate('sun_t2_mid').ok).toBe(true); // requires [sun_t2_0, sun_t2_1(hidden)] -> only sun_t2_0 counts
+  });
+  it('all three keystones + new node types have handlers', () => {
+    const bon = talentBonuses(TALENTS, { ks_blaze: 1, claw_t3_0: 2, wing_t3_0: 1, claw_t2_mid: 1 });
+    expect(bon.keystones.has('ks_blaze')).toBe(true); expect(bon.critDmgPct).toBe(16); expect(bon.projSpeedPct).toBe(8); expect(bon.comboStack).toBe(1);
+  });
 });
 
 describe('modifier pipeline', () => {

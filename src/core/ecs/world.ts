@@ -19,7 +19,7 @@ export interface Entity {
   moveId?: string; life?: number; tick?: number; tickT?: number; hitSet?: Set<number>; pierce?: number;
   len?: number; width?: number; /** beam: current reach after wall clipping */ reach?: number; delay?: number; mods?: MoveMods;
   /** projectile: remaining chains/forks (from MoveSpec) */ chain?: number; fork?: number; dmgMult?: number; chainJumps?: number;
-  /** ground: 'seed' | 'fire'; blast: 'sticky' mark; zone: follows caster */ sub?: string; follow?: boolean; scale?: number;
+  /** ground: 'seed' | 'fire'; blast: 'sticky' mark; zone: follows caster */ sub?: string; follow?: boolean; scale?: number; /** ground fire laid during Sunny Day (ground_sun look) */ sunlit?: boolean;
   /** generic statuses (ember-seed, ...) driven by data/build/reactions.json */ statuses?: Record<string, { t: number; stacks: number; src: number }>;
   // dash
   dash?: { t: number; dirX: number; dirY: number; speed: number; hit: boolean; moveId?: string };
