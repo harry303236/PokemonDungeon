@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { Sim, MAX_FLOOR, xpToNext, type Progress } from '../../core/sim';
 import { BALANCE } from '../../core/balance';
 import { WALL } from '../../core/dungeon/bsp-gen';
+import { clampToFloor } from '../../core/dungeon/pathfind';
 import { monster as monsterData, move as moveData } from '../../data/registry';
 import { moveCooldown } from '../../core/moves/cooldown';
 import { SpriteProvider, TILESET_KEY, type AnimName } from '../views/sprite-provider';
@@ -40,6 +41,10 @@ export class DungeonScene extends Phaser.Scene {
   private blasts = new Map<number, { x: number; y: number; r: number }>();
   private tileLayers: Phaser.Tilemaps.TilemapLayer[] = [];
   private now = 0;
+  private pending: { moveTo?: { x: number; y: number }; attackTarget?: number } = {};
+  private lmb: { mode: 'ground' | 'attack' | 'force'; since: number } | null = null;
+  private marker: { x: number; y: number; t: number } | null = null;
+  private barTexts: Phaser.GameObjects.Text[] = [];
 
   constructor() { super('dungeon'); }
 
@@ -64,6 +69,27 @@ export class DungeonScene extends Phaser.Scene {
     kb?.on('keydown-R', () => { if (this.sim.player.dead) this.sim.respawn(); });
     kb?.on('keydown-ENTER', () => { if (this.sim.victory) { saveProgress(this.sim.progress); this.scene.start('title'); } });
     this.bindEvents();
+    this.bindPointer();
+    // Debug/test hook (read-only use in automated browser checks).
+    (window as unknown as { __pokedungeon?: unknown }).__pokedungeon = { sim: () => this.sim, cam: this.cameras.main };
+    for (let i = 0; i < 15; i++) this.barTexts.push(this.add.text(0, 0, '', { fontSize: '11px', color: '#fff', stroke: '#000', strokeThickness: 3 }).setScrollFactor(0).setDepth(12).setOrigin(0.5));
+  }
+
+  private uiOpen(): boolean { return this.inv.open || this.skills.open; }
+
+  private bindPointer(): void {
+    this.input.on('pointerdown', (ptr: Phaser.Input.Pointer) => {
+      if (!ptr.leftButtonDown() || this.uiOpen() || this.sim.player.dead) return;
+      const wp = ptr.positionToCamera(this.cameras.main) as Phaser.Math.Vector2;
+      const shift = (ptr.event as MouseEvent | undefined)?.shiftKey ?? false;
+      if (shift) { this.lmb = { mode: 'force', since: this.now }; return; }
+      let best: number | undefined; let bd = Infinity;
+      for (const m of this.sim.world.query('monster')) { const d = Math.hypot(m.x - wp.x, m.y - wp.y); if (d < m.r + 14 && d < bd) { bd = d; best = m.id; } }
+      if (best !== undefined) { this.pending.attackTarget = best; this.lmb = { mode: 'attack', since: this.now }; return; }
+      this.pending.moveTo = { x: wp.x, y: wp.y }; this.lmb = { mode: 'ground', since: this.now };
+      const g = clampToFloor(this.sim.floor, wp.x, wp.y, T); this.marker = { x: g.x, y: g.y, t: 0.6 };
+    });
+    this.input.on('pointerup', (ptr: Phaser.Input.Pointer) => { if (!ptr.leftButtonDown()) this.lmb = null; });
   }
 
   private say(msg: string): void { this.banner.setText(msg); this.bannerT = 2.5; }
@@ -92,7 +118,17 @@ export class DungeonScene extends Phaser.Scene {
     this.now += deltaMs / 1000;
     this.acc += Math.min(0.1, deltaMs / 1000);
     const cmd = this.input2.read(this.sim.player.x, this.sim.player.y);
-    if (this.inv.open || this.skills.open) { cmd.slots = cmd.slots.map(() => false); cmd.moveX = 0; cmd.moveY = 0; cmd.dodge = false; }
+    const ptr = this.input.activePointer;
+    if (this.lmb && !ptr.leftButtonDown()) this.lmb = null;
+    if (this.pending.moveTo) cmd.moveTo = this.pending.moveTo;
+    if (this.pending.attackTarget !== undefined) cmd.attackTarget = this.pending.attackTarget;
+    this.pending = {};
+    if (this.lmb?.mode === 'force') cmd.forceAttack = true;
+    if (this.lmb?.mode === 'ground' && this.now - this.lmb.since > 0.25 && !cmd.moveX && !cmd.moveY) {
+      const p = this.sim.player; const dx = cmd.aimX - p.x, dy = cmd.aimY - p.y; // hold = steer toward cursor
+      if (Math.hypot(dx, dy) > 10) { cmd.moveX = dx; cmd.moveY = dy; }
+    }
+    if (this.inv.open || this.skills.open) { cmd.forceAttack = false; cmd.moveTo = undefined; cmd.attackTarget = undefined; cmd.slots = cmd.slots.map(() => false); cmd.moveX = 0; cmd.moveY = 0; cmd.dodge = false; }
     const prevFloor = this.sim.floorNo;
     while (this.acc >= BALANCE.FIXED_DT) { this.sim.step(BALANCE.FIXED_DT, cmd); this.acc -= BALANCE.FIXED_DT; }
     if (this.sim.floorNo !== prevFloor) saveProgress(this.sim.progress);
@@ -190,6 +226,14 @@ export class DungeonScene extends Phaser.Scene {
     this.syncSprites(); this.emitFx(); this.bars.clear();
     const g = this.g; g.clear(); const s = this.sim; const p = s.player;
     const ex = s.floor.exit;
+    if (this.marker) {
+      this.marker.t -= 1 / 60; const k = Math.max(0, this.marker.t / 0.6);
+      g.lineStyle(2, 0x80ff80, k).strokeCircle(this.marker.x, this.marker.y, 6 + (1 - k) * 12);
+      g.lineStyle(2, 0x80ff80, k).strokeEllipse(this.marker.x, this.marker.y, 20, 10);
+      if (this.marker.t <= 0) this.marker = null;
+    }
+    if (s.order?.kind === 'move') { g.fillStyle(0x80ff80, 0.35); for (const wp of s.order.path) g.fillCircle(wp.x, wp.y, 2); }
+    if (s.order?.kind === 'attack') { const tg = s.world.get(s.order.target); if (tg && !tg.dead) g.lineStyle(2, 0xff4040, 0.9).strokeEllipse(tg.x, tg.y + tg.r * 0.5, tg.r * 3, tg.r * 1.4); }
     g.lineStyle(3, s.exitOpen ? 0x40ff80 : 0x555555).strokeCircle((ex.cx + 0.5) * T, (ex.cy + 0.5) * T, T * 0.9);
     for (const e of s.world.entities.values()) {
       if (e.dead) continue;
@@ -235,11 +279,16 @@ export class DungeonScene extends Phaser.Scene {
     bar(16, H - 30, 260, s.progress.xp / xpToNext(s.progress.level), 0xc0c040);
     const slots = s.slots;
     slots.forEach((id, i) => {
-      const x = W / 2 - 150 + i * 62, y = H - 70;
-      h.fillStyle(0x221a18, 0.9).fillRect(x, y, 54, 54); h.lineStyle(2, 0x886644).strokeRect(x, y, 54, 54);
-      if (!id) return;
-      const cdFrac = s.cooldownLeft(id) / moveCooldown(moveData(id));
-      if (cdFrac > 0) h.fillStyle(0x000000, 0.65).fillRect(x, y + 54 * (1 - cdFrac), 54, 54 * cdFrac);
+      const x = W / 2 - 165 + i * 66, y = H - 74, S = 58;
+      h.fillStyle(0x1a1412, 0.92).fillRect(x, y, S, S); h.lineStyle(2, 0x886644).strokeRect(x, y, S, S);
+      const [kt, nt, ct] = [this.barTexts[i * 3], this.barTexts[i * 3 + 1], this.barTexts[i * 3 + 2]];
+      kt?.setPosition(x + 9, y + 7).setText(SLOT_LABELS[i] ?? '').setColor('#ffcc66');
+      if (!id) { nt?.setText(''); ct?.setText(''); return; }
+      drawMoveIcon(h, id, x + S / 2, y + S / 2 - 3);
+      nt?.setPosition(x + S / 2, y + S - 8).setText(t(`move.${id}`));
+      const left = s.cooldownLeft(id); const cdFrac = left / moveCooldown(moveData(id));
+      if (cdFrac > 0) h.fillStyle(0x000000, 0.6).fillRect(x, y + S * (1 - cdFrac), S, S * cdFrac);
+      ct?.setPosition(x + S / 2, y + S / 2 - 3).setText(left > 0.05 ? left.toFixed(1) : '').setFontSize(16);
     });
     const labels = slots.map((id, i) => `${SLOT_LABELS[i]}:${id ? t(`move.${id}`) : t('skills.empty')}`).join('   ');
     const need = Math.ceil(s.totalMonsters * 0.6);
@@ -259,5 +308,21 @@ export class DungeonScene extends Phaser.Scene {
     else if (s.victory) this.banner.setText(t('hud.victory')).setAlpha(1);
     else this.banner.setAlpha(this.bannerT > 0 ? 1 : 0);
     this.banner.setPosition(W / 2, H / 2 - 120);
+  }
+}
+
+const SHAPE_ICON_COLOR: Record<string, number> = { projectile: 0xff9a3c, beam: 0xff5a1f, zone: 0xe8462a, 'aoe-target': 0xffcc33, dash: 0xd0302a };
+/** Simple generated skill icon: colored orb + glyph by shape. */
+function drawMoveIcon(h: Phaser.GameObjects.Graphics, id: string, cx: number, cy: number): void {
+  const m = moveData(id); const c = SHAPE_ICON_COLOR[m.shape] ?? 0xff8800;
+  h.fillStyle(c, 0.35).fillCircle(cx, cy, 20); h.fillStyle(c, 0.8).fillCircle(cx, cy, 14);
+  h.fillStyle(0xfff0c0); h.lineStyle(3, 0xfff0c0);
+  switch (m.shape) {
+    case 'projectile': h.fillCircle(cx + 4, cy - 2, 5); h.fillTriangle(cx - 10, cy + 6, cx + 1, cy + 1, cx + 1, cy - 5); break;
+    case 'beam': h.lineBetween(cx - 12, cy + 8, cx + 12, cy - 8); h.lineStyle(1, 0xffffff).lineBetween(cx - 12, cy + 8, cx + 12, cy - 8); break;
+    case 'zone': h.strokeCircle(cx, cy, 9); h.fillCircle(cx, cy, 3); break;
+    case 'aoe-target': for (let k = 0; k < 6; k++) { const a = (k / 6) * Math.PI * 2; h.fillCircle(cx + Math.cos(a) * 8, cy + Math.sin(a) * 8, 3); } h.fillCircle(cx, cy, 4); break;
+    case 'dash': h.fillTriangle(cx - 10, cy - 8, cx + 10, cy, cx - 10, cy + 8); break;
+    default: h.fillCircle(cx, cy, 5);
   }
 }

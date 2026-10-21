@@ -12,7 +12,7 @@
  "hud.evolve.1": "進化成火恐龍！噴射火焰範圍變大",
  "hud.evolve.2": "進化成噴火龍！噴射火焰範圍大幅提升",
  "hud.loot": "撿到 {rarity} 物品",
- "hud.help": "左鍵按住 移動｜方向鍵 移動｜滑鼠瞄準｜右鍵/Q/W/E/R 施放欄位招式｜Space 閃避｜Tab 招式面板｜I 背包",
+ "hud.help": "左鍵點地面 尋路移動（按住=跟隨游標）｜左鍵點敵人 自動攻擊｜Shift+左鍵 原地攻擊｜方向鍵 移動｜滑鼠瞄準｜右鍵/Q/W/E/R 施放欄位招式｜Space 閃避｜Tab 招式面板｜I 背包",
  "move.ember": "火花",
  "move.flamethrower": "噴射火焰",
  "move.fire-spin": "火焰旋渦",

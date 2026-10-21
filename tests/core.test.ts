@@ -138,3 +138,71 @@ describe('hotbar loadout', () => {
     expect(sim.cooldownLeft('fire-blast')).toBeGreaterThan(7);
   });
 });
+
+import { findPath, clampToFloor, nearestFloorTile } from '../src/core/dungeon/pathfind';
+import { isWall, type FloorMap } from '../src/core/dungeon/bsp-gen';
+const mkFloor = (rows: string[]): FloorMap => {
+  const h = rows.length, w = rows[0]?.length ?? 0; const tiles = new Uint8Array(w * h);
+  rows.forEach((r, y) => [...r].forEach((c, x) => (tiles[y * w + x] = c === '.' ? 1 : 0)));
+  const room = { x: 0, y: 0, w: 1, h: 1, cx: 1, cy: 1 };
+  return { w, h, tiles, rooms: [room], start: room, exit: room };
+};
+describe('pathfinding', () => {
+  const f = mkFloor(['#######', '#..#..#', '#..#..#', '#.....#', '#######']);
+  it('routes around walls without corner cutting', () => {
+    const p = findPath(f, 1, 1, 5, 1); expect(p).not.toBeNull();
+    expect(p?.at(-1)).toEqual({ x: 5, y: 1 });
+    expect(p?.some((t) => t.y === 3)).toBe(true); // must go down through the gap
+    for (const t of p ?? []) expect(isWall(f, t.x, t.y)).toBe(false);
+  });
+  it('returns null for walls / unreachable', () => {
+    expect(findPath(f, 1, 1, 3, 1)).toBeNull();
+    expect(findPath(mkFloor(['#####', '#.#.#', '#####']), 1, 1, 3, 1)).toBeNull();
+  });
+  it('works on generated floors', () => {
+    const g = generateFloor(new Rng(11)); const a = g.start, b = g.exit;
+    expect(findPath(g, a.cx, a.cy, b.cx, b.cy)?.length).toBeGreaterThan(0);
+  });
+});
+describe('fire spin clamp', () => {
+  const f = mkFloor(['#######', '#.....#', '#######', '#######']);
+  it('clamps a point inside a wall to the nearest floor tile center', () => {
+    expect(nearestFloorTile(f, 3, 3)).toEqual({ x: 3, y: 1 });
+    expect(clampToFloor(f, 3.5 * 32, 3.5 * 32, 32)).toEqual({ x: 3.5 * 32, y: 1.5 * 32 });
+    expect(clampToFloor(f, 2.2 * 32, 1.4 * 32, 32)).toEqual({ x: 2.2 * 32, y: 1.4 * 32 });
+  });
+  it('sim never spawns fire-spin zone inside a wall', () => {
+    const sim = new Sim(newProgress(8)); const p = sim.player;
+    for (let a = 0; a < 16; a++) {
+      sim.cooldowns.clear(); sim.energy = 100;
+      const ang = (a / 16) * Math.PI * 2; sim.tryCast('fire-spin', p.x + Math.cos(ang) * 400, p.y + Math.sin(ang) * 400);
+    }
+    const zones = sim.world.query('zone'); expect(zones.length).toBe(16);
+    for (const z of zones) expect(isWall(sim.floor, Math.floor(z.x / 32), Math.floor(z.y / 32))).toBe(false);
+  });
+});
+describe('click orders', () => {
+  it('click-to-move reaches the goal via A*', () => {
+    const sim = new Sim(newProgress(21)); const ex = sim.floor.rooms[1] ?? sim.floor.exit;
+    for (const m of sim.world.query('monster')) m.dead = true; sim.world.cleanup();
+    const idle = { moveX: 0, moveY: 0, aimX: 0, aimY: 0, slots: [false, false, false, false, false], dodge: false };
+    sim.step(1 / 60, { ...idle, moveTo: { x: (ex.cx + 0.5) * 32, y: (ex.cy + 0.5) * 32 } });
+    for (let i = 0; i < 60 * 30 && sim.order; i++) sim.step(1 / 60, idle);
+    expect(Math.hypot(sim.player.x - (ex.cx + 0.5) * 32, sim.player.y - (ex.cy + 0.5) * 32)).toBeLessThan(4);
+  });
+  it('attack order uses first slotted attack when basic is unslotted', () => {
+    const sim = new Sim(newProgress(21)); sim.setSlot(0, null);
+    expect(sim.primaryAttack()).toBe('flamethrower');
+  });
+});
+describe('attack order', () => {
+  it('walks into range and kills the clicked monster with basic attacks', () => {
+    const sim = new Sim(newProgress(21)); const p = sim.player;
+    for (const m of sim.world.query('monster')) m.dead = true; sim.world.cleanup();
+    const m = sim.spawnMonster('rattata', p.x, p.y, 3); // same tile, then move it via path target
+    m.ai = undefined; const idle = { moveX: 0, moveY: 0, aimX: 0, aimY: 0, slots: [false, false, false, false, false], dodge: false };
+    sim.step(1 / 60, { ...idle, attackTarget: m.id });
+    for (let i = 0; i < 60 * 20 && !m.dead; i++) { p.hp = p.maxHp; sim.step(1 / 60, idle); }
+    sim.step(1 / 60, idle); expect(m.dead).toBe(true); expect(sim.order).toBeNull();
+  });
+});

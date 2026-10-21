@@ -7,12 +7,17 @@ import { calcStats, xpToNext } from './stats/stat-calc';
 import { calcDamage } from './combat/damage';
 import { moveCooldown, energyCost } from './moves/cooldown';
 import { BASIC_MOVE, DEFAULT_SLOTS, assignSlot, validateSlots, type Slots } from './moves/loadout';
+import { findPath, clampToFloor, hasLineOfSight, type Pt } from './dungeon/pathfind';
 import { rollItem, canEquip, type Item, type ItemSlot } from './loot/loot-roller';
 import { monster as monsterData, move as moveData, species as speciesData, MONSTERS } from '../data/registry';
 
 export interface InputCommand {
   moveX: number; moveY: number; aimX: number; aimY: number; // aim in world px
   slots: boolean[]; dodge: boolean; // slots: RMB, Q, W, E, R
+  /** One-shot click orders (left click): walk to point via A*, or attack a monster. */
+  moveTo?: { x: number; y: number }; attackTarget?: number;
+  /** Shift+LMB held: attack in place toward cursor with the primary attack. */
+  forceAttack?: boolean;
 }
 export interface Progress {
   level: number; xp: number; inventory: Item[]; equipped: Partial<Record<ItemSlot, Item>>;
@@ -43,6 +48,8 @@ export class Sim {
   victory = false;
   time = 0;
   private hash = new SpatialHash(64);
+  /** Current click order (Diablo-style). */
+  order: { kind: 'move'; path: Pt[]; goal: Pt } | { kind: 'attack'; target: number; path: Pt[]; repath: number } | null = null;
   private rootSeq = 1;
 
   constructor(public progress: Progress) {
@@ -145,9 +152,57 @@ export class Sim {
       p.iframes = Math.max(p.iframes ?? 0, 0.3); this.dodgeCd = 0.9;
       return;
     }
+    if (cmd.moveTo) this.orderMove(cmd.moveTo.x, cmd.moveTo.y);
+    if (cmd.attackTarget !== undefined) this.order = { kind: 'attack', target: cmd.attackTarget, path: [], repath: 0 };
     const len = Math.hypot(cmd.moveX, cmd.moveY);
-    if (len > 0) { const sp = (p.stats?.moveSpeed ?? 160) * dt; this.moveEntity(p, (cmd.moveX / len) * sp, (cmd.moveY / len) * sp); }
+    if (len > 0) { this.order = null; const sp = (p.stats?.moveSpeed ?? 160) * dt; this.moveEntity(p, (cmd.moveX / len) * sp, (cmd.moveY / len) * sp); }
+    else if (cmd.forceAttack) { this.order = null; const a = this.primaryAttack(); if (a) this.tryCast(a, cmd.aimX, cmd.aimY); }
+    else this.followOrder(dt);
     cmd.slots.forEach((on, i) => { const id = this.slots[i]; if (on && id) this.tryCast(id, cmd.aimX, cmd.aimY); });
+  }
+
+  /** Primary click attack: basic if slotted, else first slotted damaging move. */
+  primaryAttack(): string | null {
+    if (this.slots.includes(BASIC)) return BASIC;
+    return this.slots.find((id): id is string => !!id && moveData(id).power > 0) ?? null;
+  }
+  attackRange(id: string): number {
+    const pr = moveData(id).params;
+    return pr.range ? pr.range * 0.8 : pr.length ?? pr.maxRange ?? pr.distance ?? 200;
+  }
+  orderMove(x: number, y: number): boolean {
+    const p = this.player; const goal = clampToFloor(this.floor, x, y, T);
+    const path = findPath(this.floor, Math.floor(p.x / T), Math.floor(p.y / T), Math.floor(goal.x / T), Math.floor(goal.y / T));
+    if (!path) { this.order = null; return false; }
+    const pts = path.map((t) => ({ x: (t.x + 0.5) * T, y: (t.y + 0.5) * T }));
+    if (pts.length) pts[pts.length - 1] = goal;
+    this.order = { kind: 'move', path: pts, goal };
+    return true;
+  }
+  private stepAlong(path: Pt[], dt: number): void {
+    const p = this.player; let budget = (p.stats?.moveSpeed ?? 160) * dt;
+    while (budget > 0 && path.length) {
+      const wp = path[0] as Pt; const dx = wp.x - p.x, dy = wp.y - p.y; const d = Math.hypot(dx, dy);
+      if (d <= budget) { this.moveEntity(p, dx, dy); budget -= d; path.shift(); }
+      else { this.moveEntity(p, (dx / d) * budget, (dy / d) * budget); p.rot = Math.atan2(dy, dx); budget = 0; }
+    }
+  }
+  private followOrder(dt: number): void {
+    const o = this.order; const p = this.player; if (!o) return;
+    if (o.kind === 'move') { this.stepAlong(o.path, dt); if (!o.path.length) this.order = null; return; }
+    const tgt = this.world.get(o.target); const atk = this.primaryAttack();
+    if (!tgt || tgt.dead || !atk) { this.order = null; return; }
+    const d = Math.hypot(tgt.x - p.x, tgt.y - p.y);
+    if (d <= this.attackRange(atk) && hasLineOfSight(this.floor, p.x, p.y, tgt.x, tgt.y, T)) {
+      p.rot = Math.atan2(tgt.y - p.y, tgt.x - p.x); this.tryCast(atk, tgt.x, tgt.y); return;
+    }
+    o.repath -= dt;
+    if (o.repath <= 0 || !o.path.length) {
+      o.repath = 0.4;
+      const path = findPath(this.floor, Math.floor(p.x / T), Math.floor(p.y / T), Math.floor(tgt.x / T), Math.floor(tgt.y / T));
+      o.path = (path ?? []).map((t) => ({ x: (t.x + 0.5) * T, y: (t.y + 0.5) * T }));
+    }
+    this.stepAlong(o.path, dt);
   }
 
   get slots(): Slots { return this.progress.slots ?? DEFAULT_SLOTS; }
@@ -193,7 +248,7 @@ export class Sim {
       }
       case 'zone': case 'aoe-target': {
         const maxR = pr.maxRange ?? 260; const d = Math.min(maxR, Math.hypot(ax - p.x, ay - p.y));
-        const x = p.x + Math.cos(ang) * d; const y = p.y + Math.sin(ang) * d;
+        const { x, y } = clampToFloor(this.floor, p.x + Math.cos(ang) * d, p.y + Math.sin(ang) * d, T);
         if (m.shape === 'zone') this.world.spawn({ kind: 'zone', x, y, r: pr.r ?? 80, team: 'player', owner: p.id, moveId: id, life: pr.duration ?? 4, tick: pr.tick ?? 0.5, tickT: 0, mods });
         else this.world.spawn({ kind: 'blast', x, y, r: pr.r ?? 100, team: 'player', owner: p.id, moveId: id, life: pr.delay ?? 0.4, delay: pr.delay ?? 0.4, mods });
         break;
