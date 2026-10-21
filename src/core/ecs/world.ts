@@ -1,3 +1,4 @@
+import type { MoveSpec } from '../build/pipeline';
 import type { TypeId } from '../../data/schemas';
 import type { Stats } from '../stats/stat-calc';
 import type { Item } from '../loot/loot-roller';
@@ -17,12 +18,14 @@ export interface Entity {
   // damage carriers
   moveId?: string; life?: number; tick?: number; tickT?: number; hitSet?: Set<number>; pierce?: number;
   len?: number; width?: number; /** beam: current reach after wall clipping */ reach?: number; delay?: number; mods?: MoveMods;
+  /** projectile: remaining chains/forks (from MoveSpec) */ chain?: number; fork?: number; dmgMult?: number;
+  /** generic statuses (ember-seed, ...) driven by data/build/reactions.json */ statuses?: Record<string, { t: number; stacks: number; src: number }>;
   // dash
   dash?: { t: number; dirX: number; dirY: number; speed: number; hit: boolean; moveId?: string };
   // loot
   item?: Item;
 }
-export interface MoveMods { powerBonus: number; leech: number; kindling: boolean }
+export interface MoveMods { powerBonus: number; leech: number; kindling: boolean; /** pipeline result for this cast */ spec?: MoveSpec; /** reaction bursts don't re-trigger reactions */ noReact?: boolean }
 
 export class World {
   private nextId = 1;

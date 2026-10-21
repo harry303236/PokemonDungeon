@@ -49,7 +49,7 @@ export class VfxView {
     if (!s) { s = this.scene.add.sprite(0, 0, key).setDepth(depth).setBlendMode(Phaser.BlendModes.ADD); this.bound.set(id, s); }
     return s;
   }
-  private oneShot(key: string, x: number, y: number, scale: number, rot = 0, depth = 6): void {
+  oneShot(key: string, x: number, y: number, scale: number, rot = 0, depth = 6): void {
     if (!this.scene.anims.exists(key)) return;
     const s = this.scene.add.sprite(x, y, key).setScale(scale).setRotation(rot).setDepth(depth).setBlendMode(Phaser.BlendModes.ADD);
     s.play(key); s.once('animationcomplete', () => s.destroy());

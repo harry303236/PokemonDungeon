@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { Environment, FpsMeter, type Light } from '../views/environment';
 import { VfxAssets, VfxView } from '../views/vfx-view';
+import { TalentPanelView } from '../views/talent-panel-view';
 import { Sim, MAX_FLOOR, xpToNext, type Progress } from '../../core/sim';
 import { BALANCE } from '../../core/balance';
 import { WALL } from '../../core/dungeon/bsp-gen';
@@ -59,6 +60,7 @@ export class DungeonScene extends Phaser.Scene {
   private lmb: { mode: 'ground' | 'attack' | 'force'; since: number } | null = null;
   private marker: { x: number; y: number; t: number } | null = null;
   private env!: Environment;
+  private talents!: TalentPanelView;
   private vfx: VfxView | null = null;
   private glowSpots: { img: Phaser.GameObjects.Image; x: number; y: number; ph: number; r: number; sp: number }[] = [];
   private fpsMeter = new FpsMeter();
@@ -87,7 +89,8 @@ export class DungeonScene extends Phaser.Scene {
     this.banner = this.add.text(0, 80, '', { fontFamily: HUD_FONT, fontSize: '26px', color: PALETTE.dmgSuper, stroke: '#000', strokeThickness: 5 }).setScrollFactor(0).setDepth(11).setOrigin(0.5);
     this.inv = new InventoryView(() => this.sim, () => saveProgress(this.sim.progress));
     this.skills = new SkillPanelView(() => this.sim, () => saveProgress(this.sim.progress));
-    this.events.once('shutdown', () => { this.inv.destroy(); this.skills.destroy(); });
+    this.talents = new TalentPanelView(() => this.sim, () => saveProgress(this.sim.progress));
+    this.events.once('shutdown', () => { this.inv.destroy(); this.skills.destroy(); this.talents.destroy(); });
     const kb = this.input.keyboard;
     kb?.addCapture('TAB,F1,F3');
     (['Q', 'W', 'E', 'R'] as const).forEach((key, i) => kb?.on(`keydown-${key}`, (ev: KeyboardEvent) => { if (!ev.repeat && !this.uiOpen()) this.taps.press(i + 1); }));
@@ -96,7 +99,9 @@ export class DungeonScene extends Phaser.Scene {
     kb?.on('keydown-F1', () => this.help.setVisible(!this.help.visible));
     kb?.on('keydown-TAB', () => this.skills.toggle());
     kb?.on('keydown-I', () => { this.inv.toggle(); this.skills.setOpen(this.inv.open); });
-    kb?.on('keydown-L', (ev: KeyboardEvent) => this.sim.debugLevelUp(ev.shiftKey)); // debug
+    kb?.on('keydown-L', (ev: KeyboardEvent) => { this.sim.debugLevelUp(ev.shiftKey); this.sim.refreshBuild(); }); // debug
+    kb?.on('keydown-K', () => { this.sim.debugGrantBuild(); if (this.skills.open) this.skills.render(); if (this.talents.open) this.talents.render(); }); // debug: +5 talent pts, 1 of each gem, shards, gold
+    kb?.on('keydown-T', () => this.talents.toggle());
     kb?.on('keydown-R', () => { if (this.sim.player.dead) this.sim.respawn(); });
     kb?.on('keydown-ENTER', () => { if (this.sim.victory) { saveProgress(this.sim.progress); this.scene.start('title'); } });
     this.cameras.main.setRoundPixels(true);
@@ -132,7 +137,7 @@ export class DungeonScene extends Phaser.Scene {
   }
   private afterRebind(): void { saveProgress(this.sim.progress); if (this.skills.open) this.skills.render(); }
 
-  private uiOpen(): boolean { return this.inv.open || this.skills.open; }
+  private uiOpen(): boolean { return this.inv.open || this.skills.open || this.talents.open; }
 
   private bindPointer(): void {
     this.input.on('pointerdown', (ptr: Phaser.Input.Pointer) => {
@@ -153,6 +158,11 @@ export class DungeonScene extends Phaser.Scene {
 
   private bindEvents(): void {
     const bus = this.sim.bus;
+    bus.on('reaction', (e) => { // placeholder VFX until the artist delivers reaction art
+      if (this.vfx) { this.vfx.oneShot('vfx-fire-blast', e.x, e.y, (e.r * 2.6) / 256); this.vfx.hit(e.x, e.y, true); } else this.fx.explosion(e.x, e.y, e.r);
+      this.cameras.main.shake(90, 0.004);
+    });
+    bus.on('build:gain', (e) => this.say(e.what === 'ash_shard' ? '獲得 灰燼碎片' : '獲得 輔助寶石'));
     bus.on('damage:dealt', (e) => {
       const color = e.target === this.sim.player.id ? PALETTE.dmgPlayer : e.typeEff > 1 ? PALETTE.dmgSuper : e.typeEff < 1 ? PALETTE.dmgWeak : PALETTE.dmg;
       const size = e.isCrit || e.typeEff > 1 ? 20 : 14;
@@ -185,7 +195,7 @@ export class DungeonScene extends Phaser.Scene {
       const p = this.sim.player; const dx = cmd.aimX - p.x, dy = cmd.aimY - p.y; // hold = steer toward cursor
       if (Math.hypot(dx, dy) > 10) { cmd.moveX = dx; cmd.moveY = dy; }
     }
-    if (this.inv.open || this.skills.open) { cmd.forceAttack = false; cmd.moveTo = undefined; cmd.attackTarget = undefined; cmd.slots = cmd.slots.map(() => false); cmd.moveX = 0; cmd.moveY = 0; cmd.dodge = false; }
+    if (this.uiOpen()) { cmd.forceAttack = false; cmd.moveTo = undefined; cmd.attackTarget = undefined; cmd.slots = cmd.slots.map(() => false); cmd.moveX = 0; cmd.moveY = 0; cmd.dodge = false; }
     const prevFloor = this.sim.floorNo;
     let stepped = false;
     while (this.acc >= BALANCE.FIXED_DT) {

@@ -7,6 +7,9 @@ import { calcStats, xpToNext } from './stats/stat-calc';
 import { calcDamage } from './combat/damage';
 import { moveCooldown, energyCost } from './moves/cooldown';
 import { BASIC_MOVE, DEFAULT_SLOTS, assignSlot, validateSlots, type Slots } from './moves/loadout';
+import { Build, ensureBuild, moveTags, MOVE_TAGS, REACTIONS, STATUSES, GEMS, type BuildSave } from './build/build';
+import { baseSpec, buildMoveSpec, dmgFactor, areaFactor, compatible, type Modifier, type MoveSpec } from './build/pipeline';
+import { emptyBonuses, type PlayerBonuses } from './build/talents';
 import { findPath, clampToFloor, hasLineOfSight, type Pt } from './dungeon/pathfind';
 import { rollItem, canEquip, type Item, type ItemSlot } from './loot/loot-roller';
 import { monster as monsterData, move as moveData, species as speciesData, MONSTERS } from '../data/registry';
@@ -25,7 +28,7 @@ export interface InputCommand {
 }
 export interface Progress {
   level: number; xp: number; inventory: Item[]; equipped: Partial<Record<ItemSlot, Item>>;
-  bestFloor: number; nextUid: number; seed: number; slots?: Slots;
+  bestFloor: number; nextUid: number; seed: number; slots?: Slots; build?: BuildSave;
 }
 export const newProgress = (seed: number): Progress => ({ level: 5, xp: 0, inventory: [], equipped: {}, bestFloor: 1, nextUid: 1, seed });
 
@@ -62,10 +65,15 @@ export class Sim {
   /** Current click order (Diablo-style). */
   order: { kind: 'move'; path: Pt[]; goal: Pt } | { kind: 'attack'; target: number; path: Pt[]; repath: number } | null = null;
   private rootSeq = 1;
+  build!: Build;
+  bon: PlayerBonuses = emptyBonuses();
 
   constructor(public progress: Progress) {
     if (!progress.slots || !validateSlots(progress.slots).ok) progress.slots = [...DEFAULT_SLOTS];
     this.rng = new Rng(progress.seed);
+    progress.build = ensureBuild(progress.build);
+    this.build = new Build(progress.build, () => ({ level: this.progress.level, evoStage1: this.evoStage + 1 }));
+    this.bon = this.build.bonuses();
     this.loadFloor(1);
   }
 
@@ -100,12 +108,27 @@ export class Sim {
     return s;
   }
 
+  /** Species stats + talent % bonuses. */
+  playerStats(): ReturnType<typeof calcStats> {
+    const st = calcStats(speciesData(this.speciesId), this.progress.level); const b = this.bon;
+    return { ...st, atk: Math.round(st.atk * (1 + b.atkPct / 100)), spa: Math.round(st.spa * (1 + b.spAtkPct / 100)), def: Math.round(st.def * (1 + b.defPct / 100)),
+      moveSpeed: st.moveSpeed * (1 + b.speedPct / 100) };
+  }
+  /** Re-derive talent bonuses + player stats after a build change (keeps HP ratio). */
+  refreshBuild(): void {
+    this.bon = this.build.bonuses(); const p = this.player; if (!p) return;
+    const ratio = (p.hp ?? 1) / Math.max(1, p.maxHp ?? 1); const st = this.playerStats();
+    p.stats = st; p.maxHp = st.maxHp; p.hp = Math.max(1, Math.round(st.maxHp * ratio));
+  }
+  /** Debug: talent points + one of each gem + respec materials. */
+  debugGrantBuild(): void { const b = this.build.s; b.bonusPoints += 5; b.gems.push(...Object.keys(GEMS)); b.ashShards += 3; b.gold += 2000; }
+
   loadFloor(n: number): void {
     this.floorNo = n;
     this.world = new World();
     this.floor = generateFloor(new Rng(this.progress.seed * 31 + n * 7919));
     const sp = speciesData(this.speciesId);
-    const st = calcStats(sp, this.progress.level);
+    const st = this.playerStats();
     const keepHp = this.player?.hp;
     this.player = this.world.spawn({ kind: 'player', x: (this.floor.start.cx + 0.5) * T, y: (this.floor.start.cy + 0.5) * T, r: 12, team: 'player',
       hp: keepHp && keepHp > 0 ? Math.min(keepHp, st.maxHp) : st.maxHp, maxHp: st.maxHp, stats: st, level: this.progress.level, types: sp.types, speciesId: sp.id, iframes: 0 });
@@ -140,7 +163,7 @@ export class Sim {
     const p = this.player;
     this.hash.clear();
     for (const m of this.world.query('monster')) this.hash.insert(m);
-    this.energy = Math.min(BALANCE.energyMax, this.energy + BALANCE.energyRegen * dt);
+    this.energy = Math.min(BALANCE.energyMax, this.energy + BALANCE.energyRegen * (1 + this.bon.ppRegenPct / 100) * dt);
     for (const [k, v] of this.cooldowns) this.cooldowns.set(k, Math.max(0, v - dt));
     this.dodgeCd = Math.max(0, this.dodgeCd - dt);
     this.potionCd = Math.max(0, this.potionCd - dt);
@@ -170,7 +193,7 @@ export class Sim {
       const len = Math.hypot(cmd.moveX, cmd.moveY) || 1;
       const dx = cmd.moveX || Math.cos(p.rot); const dy = cmd.moveY || Math.sin(p.rot);
       p.dash = { t: 0.2, dirX: dx / (cmd.moveX || cmd.moveY ? len : 1), dirY: dy / (cmd.moveX || cmd.moveY ? len : 1), speed: 650, hit: false };
-      p.iframes = Math.max(p.iframes ?? 0, 0.3); this.dodgeCd = 0.9;
+      p.iframes = Math.max(p.iframes ?? 0, 0.3); this.dodgeCd = 0.9 * Math.max(0.2, 1 + this.bon.dodgeCdPct / 100);
       return;
     }
     if (cmd.moveTo) this.orderMove(cmd.moveTo.x, cmd.moveTo.y);
@@ -256,35 +279,35 @@ export class Sim {
     if (this.energy < cost) return false;
     this.energy -= cost;
     this.cooldowns.set(id, moveCooldown(m, eq.cdr));
-    const mods: MoveMods = { powerBonus: eq.power, leech: eq.leech, kindling: eq.kindling };
+    const spec = this.moveSpec(id, eq);
+    const mods: MoveMods = { powerBonus: eq.power, leech: eq.leech + spec.leech, kindling: eq.kindling, spec };
     const ang = Math.atan2(ay - p.y, ax - p.x);
-    const pr = m.params;
+    const pr = spec.params;
     this.bus.emit('move:cast', { caster: p.id, moveId: id });
+    const area = areaFactor(spec);
     switch (m.shape) {
       case 'projectile': {
-        const n = id === BASIC && eq.extraProj ? 2 : 1;
+        const n = Math.max(1, Math.round(spec.projectiles));
         for (let i = 0; i < n; i++) {
-          const a = ang + (n > 1 ? (i - (n - 1) / 2) * ((15 * Math.PI) / 180) : 0);
-          const spd = pr.speed ?? 500;
-          this.world.spawn({ kind: 'projectile', x: p.x, y: p.y, vx: Math.cos(a) * spd, vy: Math.sin(a) * spd, rot: a, r: pr.radius ?? 8, team: 'player', owner: p.id,
-            moveId: id, life: (pr.range ?? 400) / spd, hitSet: new Set(), pierce: id === BASIC && eq.pierce ? 2 : 0, mods });
+          const a = ang + (n > 1 ? (i - (n - 1) / 2) * ((spec.spreadDeg * Math.PI) / 180) : 0);
+          this.spawnProjectile(id, p.x, p.y, a, mods, new Set(), spec.pierce, spec.chain, spec.fork);
         }
         break;
       }
       case 'beam': {
-        const angles = id === 'flamethrower' && eq.split ? [-25, 0, 25].map((d) => ang + (d * Math.PI) / 180) : [ang];
+        const nb = Math.max(1, Math.round(spec.beams)); const step = (spec.beamSpreadDeg * Math.PI) / 180;
+        const angles = Array.from({ length: nb }, (_, i) => ang + (i - (nb - 1) / 2) * step);
         const [evoLen, evoWidth] = Sim.beamBuff(this.evoStage);
-        const lenMult = (angles.length > 1 ? 0.6 : 1) * evoLen; const dmgMult = angles.length > 1 ? 0.5 : 1;
         for (const a of angles) this.world.spawn({ kind: 'beam', x: p.x, y: p.y, rot: a - ang, r: 0, team: 'player', owner: p.id, moveId: id,
-          life: pr.duration ?? 0.8, tick: pr.tick ?? 0.1, tickT: 0, len: (pr.length ?? 300) * lenMult, width: (pr.width ?? 22) * evoWidth,
-          mods: { ...mods, powerBonus: mods.powerBonus }, delay: dmgMult });
+          life: pr.duration ?? 0.8, tick: pr.tick ?? 0.1, tickT: 0, len: (pr.length ?? 300) * evoLen, width: (pr.width ?? 22) * evoWidth * area,
+          mods, delay: 1 });
         break;
       }
       case 'zone': case 'aoe-target': {
         const maxR = pr.maxRange ?? 260; const d = Math.min(maxR, Math.hypot(ax - p.x, ay - p.y));
         const { x, y } = clampToFloor(this.floor, p.x + Math.cos(ang) * d, p.y + Math.sin(ang) * d, T);
-        if (m.shape === 'zone') this.world.spawn({ kind: 'zone', x, y, r: pr.r ?? 80, team: 'player', owner: p.id, moveId: id, life: pr.duration ?? 4, tick: pr.tick ?? 0.5, tickT: 0, mods });
-        else this.world.spawn({ kind: 'blast', x, y, r: pr.r ?? 100, team: 'player', owner: p.id, moveId: id, life: pr.delay ?? 0.4, delay: pr.delay ?? 0.4, mods });
+        if (m.shape === 'zone') this.world.spawn({ kind: 'zone', x, y, r: (pr.r ?? 80) * area, team: 'player', owner: p.id, moveId: id, life: pr.duration ?? 4, tick: pr.tick ?? 0.5, tickT: 0, mods });
+        else this.world.spawn({ kind: 'blast', x, y, r: (pr.r ?? 100) * area, team: 'player', owner: p.id, moveId: id, life: pr.delay ?? 0.4, delay: pr.delay ?? 0.4, mods });
         break;
       }
       case 'dash': {
@@ -296,6 +319,27 @@ export class Sim {
       default: break;
     }
     return true;
+  }
+
+  /** Equipment affixes expressed as pipeline modifiers (so they compose with gems/talents in the fixed stage order). */
+  private equipModifiers(eq: EquipStats): Modifier[] {
+    const out: Modifier[] = [];
+    if (eq.extraProj) out.push({ source: 'affix:extra-projectile', stage: 'shape', moveId: BASIC, apply: (s) => { s.projectiles += 1; } });
+    if (eq.split) out.push({ source: 'affix:split-flame', stage: 'shape', moveId: 'flamethrower', apply: (s) => { s.beams = 3; s.moreDmg *= 0.5; s.params.length = (s.params.length ?? 300) * 0.6; } });
+    if (eq.pierce) out.push({ source: 'affix:pierce', stage: 'prehit', moveId: BASIC, apply: (s) => { s.pierce += 2; } });
+    return out;
+  }
+  /** Build the cast spec through the modifier pipeline (variant -> shape -> prehit -> onhit -> reaction -> numeric). */
+  moveSpec(id: string, eq = this.equipStats()): MoveSpec {
+    const m = moveData(id); const td = MOVE_TAGS[id];
+    const base = baseSpec(id, moveTags(id, m.shape, m.type), m.params, m.status?.id === 'burn' ? m.status.chance / 100 : 0, td?.applies ?? []);
+    if (m.category === 'physical' && this.bon.meleeLifestealPct > 0) base.leech += this.bon.meleeLifestealPct / 100;
+    return buildMoveSpec(base, this.build.modifiersFor(id, this.equipModifiers(eq), this.bon)).spec;
+  }
+  private spawnProjectile(id: string, x: number, y: number, a: number, mods: MoveMods, hitSet: Set<number>, pierce: number, chain: number, fork: number): void {
+    const pr = mods.spec?.params ?? moveData(id).params; const spd = pr.speed ?? 500;
+    this.world.spawn({ kind: 'projectile', x, y, vx: Math.cos(a) * spd, vy: Math.sin(a) * spd, rot: a, r: pr.radius ?? 8, team: 'player', owner: this.player.id,
+      moveId: id, life: (pr.range ?? 400) / spd, hitSet, pierce, chain, fork, mods });
   }
 
   private dashHits(p: Entity): void {
@@ -314,11 +358,14 @@ export class Sim {
   hit(src: Entity, target: Entity, moveId: string, mult: number, mods: MoveMods | undefined, chain: ChainContext): number {
     if (target.dead || target.hp === undefined) return 0;
     if (target.kind === 'player' && (target.iframes ?? 0) > 0) return 0;
+    if (target.kind === 'player' && this.bon.evasionPct > 0 && this.rng.next() < this.bon.evasionPct / 100) return 0; // talent evasion
+    const spec = src.team === 'player' ? mods?.spec : undefined;
+    if (spec) mult *= dmgFactor(spec);
     const m = moveData(moveId);
     const a = src.stats; const d = target.stats;
     if (!a || !d) return 0;
     const phys = m.category === 'physical';
-    const isCrit = this.rng.next() < BALANCE.critChance;
+    const isCrit = this.rng.next() < BALANCE.critChance + (src.team === 'player' ? this.bon.critPct / 100 : 0);
     const tierDmg = src.team === 'enemy' ? BALANCE.tierDmg ** (this.floorNo - 1) : 1;
     const { dmg, typeEff } = calcDamage({ level: src.level ?? 1, power: m.power, atk: phys ? a.atk : a.spa, def: phys ? d.def : d.spd, moveType: m.type,
       attackerTypes: src.types ?? [], defenderTypes: target.types ?? [], isCrit, roll: this.rng.next(), bonus: mods?.powerBonus ?? 0, mult: mult * tierDmg,
@@ -329,12 +376,35 @@ export class Sim {
     if (mods && mods.leech > 0 && src.hp !== undefined && src.maxHp) src.hp = Math.min(src.maxHp, src.hp + dmg * mods.leech);
     // status
     const st = m.status;
-    let burnChance = st?.id === 'burn' ? st.chance / 100 : 0;
+    let burnChance = spec ? spec.burnChance : st?.id === 'burn' ? st.chance / 100 : 0;
+    if (spec && !target.dead) {
+      // stage 4: statuses applied on hit
+      for (const ap of spec.applies) if (this.rng.next() < ap.chance) this.applyStatus(target, ap.status, ap.duration, src.id);
+      // stage 5: reactions (data rules: trigger tags + required status -> effect)
+      if (!mods?.noReact) this.reactions(src, target, spec, mods, chain);
+    }
     if (mods?.kindling && m.type === 'fire' && canTrigger(chain, 'kindling', target.id)) burnChance += 0.15;
     if (burnChance > 0 && this.rng.next() < burnChance) this.applyBurn(target, src.id);
     if (moveId === 'fire-spin') target.bound = { t: 1, src: src.id };
     if (target.hp <= 0) this.kill(target, src.id, 'hit', chain);
     return dmg;
+  }
+
+  applyStatus(t: Entity, id: string, duration: number, src: number): void {
+    const def = STATUSES[id]; const cur = t.statuses?.[id];
+    (t.statuses ??= {})[id] = { t: Math.max(cur?.t ?? 0, duration || def?.duration || 3), stacks: Math.min(def?.maxStacks ?? 1, (cur?.stacks ?? 0) + 1), src };
+  }
+  private reactions(src: Entity, target: Entity, spec: MoveSpec, mods: MoveMods | undefined, chain: ChainContext): void {
+    for (const rule of REACTIONS) {
+      if (spec.reactionsOff.has(rule.id) || !target.statuses?.[rule.requires] || !compatible(rule.trigger, spec.tags, spec.moveId)) continue;
+      if (!canTrigger(chain, `reaction:${rule.id}`, target.id)) continue;
+      if (rule.consume) delete target.statuses[rule.requires];
+      this.bus.emit('reaction', { id: rule.id, x: target.x, y: target.y, r: rule.effect.r });
+      if (rule.effect.type === 'burst') {
+        const burstMods: MoveMods = { ...(mods ?? { powerBonus: 0, leech: 0, kindling: false }), noReact: true };
+        for (const t of this.hash.near(target.x, target.y, rule.effect.r + 30)) if (!t.dead && Math.hypot(t.x - target.x, t.y - target.y) < rule.effect.r + t.r) this.hit(src, t, spec.moveId, rule.effect.mult, burstMods, childChain(chain));
+      }
+    }
   }
 
   applyBurn(t: Entity, src: number): void {
@@ -353,6 +423,11 @@ export class Sim {
     const md = monsterData(t.monsterId ?? '');
     const sp = speciesData(md.speciesId);
     this.gainXp(Math.round(((sp.baseExp * (t.level ?? 1)) / 7) * md.xpMult));
+    // build currencies: gold always, ash shard / support gem sometimes (TUNE)
+    const b = this.build.s; b.gold += Math.round((t.level ?? 1) * (t.isBoss ? 20 : 2));
+    if (this.rng.next() < (t.isBoss ? 1 : 0.06)) { b.ashShards++; this.bus.emit('build:gain', { what: 'ash_shard' }); }
+    if (this.rng.next() < (t.isBoss ? 1 : 0.04)) { const ids = Object.keys(GEMS); const g = ids[this.rng.int(0, ids.length - 1)]; if (g) { b.gems.push(g); this.bus.emit('build:gain', { what: g }); } }
+    if (this.bon.burnSpread > 0 && t.burn) for (const o of this.hash.near(t.x, t.y, 90)) if (!o.dead && o !== t) this.applyBurn(o, killer);
     const drops = t.isBoss ? 3 : this.rng.next() < BALANCE.dropChance ? 1 : 0;
     for (let i = 0; i < drops; i++) {
       const item = rollItem(this.rng, this.progress.nextUid++, Math.ceil(this.floorNo / 2) + (t.isBoss ? 1 : 0));
@@ -366,7 +441,7 @@ export class Sim {
     while (pr.level < 50 && pr.xp >= xpToNext(pr.level)) {
       const before = this.evoStage;
       pr.xp -= xpToNext(pr.level); pr.level++;
-      const sp = speciesData(this.speciesId); const st = calcStats(sp, pr.level);
+      const sp = speciesData(this.speciesId); const st = this.playerStats();
       const p = this.player; p.stats = st; p.level = pr.level; p.maxHp = st.maxHp; p.hp = st.maxHp; p.types = sp.types; p.speciesId = sp.id;
       this.bus.emit('player:levelup', { level: pr.level });
       if (this.evoStage > before) this.bus.emit('player:evolve', { speciesId: sp.id, stage: this.evoStage });
@@ -386,7 +461,7 @@ export class Sim {
             if (m.dead || e.hitSet?.has(m.id) || Math.hypot(m.x - e.x, m.y - e.y) > m.r + e.r) continue;
             e.hitSet?.add(m.id);
             const owner = this.world.get(e.owner ?? -1); if (owner) this.hit(owner, m, e.moveId ?? BASIC, 1, e.mods, newChain(this.rootSeq++));
-            if ((e.pierce ?? 0) <= 0) { e.dead = true; break; } e.pierce = (e.pierce ?? 0) - 1;
+            if (this.projectileOnHit(e, m)) break;
           }
         } else if (!p.dead && Math.hypot(p.x - e.x, p.y - e.y) < p.r + e.r) {
           const owner = this.world.get(e.owner ?? -1); if (owner) this.hit(owner, p, e.moveId ?? 'water-gun', 1, undefined, newChain(this.rootSeq++));
@@ -402,9 +477,13 @@ export class Sim {
           const a = p.rot + e.rot; const cx = Math.cos(a), cy = Math.sin(a); const len = this.beamReach(p.x, p.y, a, e.len ?? 300); e.reach = len;
           for (const t of this.hash.near(p.x + cx * len / 2, p.y + cy * len / 2, len / 2 + 40)) {
             const rx = t.x - p.x, ry = t.y - p.y; const along = rx * cx + ry * cy; const perp = Math.abs(-rx * cy + ry * cx);
-            if (!t.dead && along > 0 && along < len && perp < (e.width ?? 22) / 2 + t.r) this.hit(p, t, m.id, perTick, e.mods, newChain(this.rootSeq++));
+            const sp = e.mods?.spec; const dur = sp?.params.duration ?? 0.8; const w = (e.width ?? 22) * (1 + (sp?.widenOverLife ?? 0) * Math.max(0, 1 - (e.life ?? 0) / dur));
+            if (!t.dead && along > 0 && along < len && perp < w / 2 + t.r) this.hit(p, t, m.id, perTick, e.mods, newChain(this.rootSeq++));
           }
         }
+        const ex = e.mods?.spec?.endExplosion;
+        if (ex && e.life <= 0) { const a = p.rot + e.rot; const L = e.reach ?? e.len ?? 300;
+          this.world.spawn({ kind: 'blast', x: p.x + Math.cos(a) * L, y: p.y + Math.sin(a) * L, r: ex.r * areaFactor(e.mods?.spec ?? baseSpec('', [], {}, 0)), team: 'player', owner: p.id, moveId: e.moveId, life: 0.05, delay: 0.05, dmgMult: ex.mult, mods: e.mods }); }
       } else if (e.kind === 'zone') {
         e.tickT = (e.tickT ?? 0) - dt;
         if (e.tickT <= 0) {
@@ -414,22 +493,40 @@ export class Sim {
           for (const t of this.hash.near(e.x, e.y, e.r + 30)) if (!t.dead && Math.hypot(t.x - e.x, t.y - e.y) < e.r + t.r) this.hit(p, t, m.id, perTick, e.mods, newChain(this.rootSeq++));
         }
       } else if (e.kind === 'blast') {
-        if (e.life <= 0) for (const t of this.hash.near(e.x, e.y, e.r + 30)) if (!t.dead && Math.hypot(t.x - e.x, t.y - e.y) < e.r + t.r) this.hit(p, t, e.moveId ?? 'fire-blast', 1, e.mods, newChain(this.rootSeq++));
+        if (e.life <= 0) for (const t of this.hash.near(e.x, e.y, e.r + 30)) if (!t.dead && Math.hypot(t.x - e.x, t.y - e.y) < e.r + t.r) this.hit(p, t, e.moveId ?? 'fire-blast', e.dmgMult ?? 1, e.mods, newChain(this.rootSeq++));
       }
       if (e.life <= 0) e.dead = true;
     }
+  }
+
+  /** Projectile hit resolution, fixed order: pierce (prehit) -> fork -> chain (onhit) -> expire. Returns true if this projectile is done. */
+  projectileOnHit(e: Entity, m: Entity): boolean {
+    if ((e.pierce ?? 0) > 0) { e.pierce = (e.pierce ?? 0) - 1; return false; }
+    const mods = e.mods ?? { powerBonus: 0, leech: 0, kindling: false }; const a = Math.atan2(e.vy, e.vx); const id = e.moveId ?? BASIC;
+    if ((e.fork ?? 0) > 0) {
+      for (const d of [-0.5, 0.5]) this.spawnProjectile(id, m.x, m.y, a + d, mods, new Set(e.hitSet), 0, e.chain ?? 0, (e.fork ?? 0) - 1);
+      e.dead = true; return true;
+    }
+    if ((e.chain ?? 0) > 0) {
+      const range = mods.spec?.chainRange ?? 180; let best: Entity | null = null; let bd = range;
+      for (const o of this.hash.near(m.x, m.y, range)) { if (o.dead || o === m || e.hitSet?.has(o.id)) continue; const d = Math.hypot(o.x - m.x, o.y - m.y); if (d < bd) { bd = d; best = o; } }
+      if (best) { this.spawnProjectile(id, m.x, m.y, Math.atan2(best.y - m.y, best.x - m.x), mods, new Set(e.hitSet), 0, (e.chain ?? 0) - 1, 0); }
+    }
+    e.dead = true; return true;
   }
 
   private statusStep(dt: number): void {
     for (const e of [...this.world.query('monster'), this.player]) {
       if (e.dead || e.hp === undefined || !e.maxHp) continue;
       if (e.burn) {
-        e.hp -= e.maxHp * (e.isBoss ? BALANCE.burnPctBoss : BALANCE.burnPctPerSec) * e.burn.stacks * dt;
+        const bmul = e.kind === 'monster' ? 1 + this.bon.burnDmgPct / 100 : 1;
+        e.hp -= e.maxHp * (e.isBoss ? BALANCE.burnPctBoss : BALANCE.burnPctPerSec) * e.burn.stacks * dt * bmul;
         e.burn.t -= dt;
         const src = e.burn.src;
         if (e.burn.t <= 0) e.burn = undefined;
         if (e.hp <= 0) this.kill(e, src, 'burn', newChain(this.rootSeq++));
       }
+      if (e.statuses) for (const [k, v] of Object.entries(e.statuses)) { v.t -= dt; if (v.t <= 0) delete e.statuses[k]; }
       if (e.bound) { e.bound.t -= dt; if (e.bound.t <= 0) e.bound = undefined; }
     }
   }

@@ -4,6 +4,7 @@ import { move as moveData } from '../../data/registry';
 import { moveCooldown, energyCost } from '../../core/moves/cooldown';
 import { SLOT_LABELS } from '../input/input-map';
 import { t } from '../../i18n/t';
+import { GEMS, SKILL_UPGRADES, moveTags } from '../../core/build/build';
 
 const SHAPE_COLOR: Record<string, string> = { projectile: '#ff9a3c', beam: '#ff5a1f', zone: '#e8462a', 'aoe-target': '#ffcc33', dash: '#d0302a' };
 
@@ -11,6 +12,7 @@ const SHAPE_COLOR: Record<string, string> = { projectile: '#ff9a3c', beam: '#ff5
 export class SkillPanelView {
   private el: HTMLDivElement;
   private picked: string | null = null;
+  private gemMsg = '';
   open = false;
   constructor(private sim: () => Sim, private onChange: () => void) {
     this.el = document.createElement('div');
@@ -33,10 +35,30 @@ export class SkillPanelView {
     const sim = this.sim(); const slots = sim.slots;
     const slotHtml = Array.from({ length: SLOT_COUNT }, (_, i) =>
       `<div style="text-align:center"><div style="color:#fc6;font-weight:bold">${SLOT_LABELS[i]}</div>${this.icon(slots[i] ?? null, `data-slot="${i}" data-move="${slots[i] ?? ''}"`)}</div>`).join('');
-    const poolHtml = KNOWN_MOVES.map((id) => `<div style="text-align:center">${this.icon(id, `data-pool="${id}" data-move="${id}"`)}<small style="color:#999">${slots.includes(id) ? SLOT_LABELS[slots.indexOf(id)] : '—'}</small></div>`).join('');
+    const b = sim.build;
+    const sockHtml = (id: string): string => `<div style="display:flex;gap:3px;justify-content:center;margin-top:3px">${b.sockets(id).map((g, i) =>
+      `<div data-socket="${id}:${i}" title="${g ? `${GEMS[g]?.name}：${GEMS[g]?.desc}（右鍵取下）` : '拖曳輔助寶石到這裡'}" style="width:26px;height:26px;border-radius:50%;border:2px solid ${g ? '#6cf' : '#554'};background:${g ? 'radial-gradient(circle,#bdf,#247 70%)' : '#15121a'};font-size:10px;line-height:26px;color:#fff;overflow:hidden">${g ? (GEMS[g]?.name ?? '?').slice(0, 2) : ''}</div>`).join('')}</div>`;
+    const upHtml = (id: string): string => (SKILL_UPGRADES[id] ?? []).map((g) => `<div style="display:flex;gap:2px;justify-content:center;margin-top:3px">${g.options.map((o) => {
+      const on = b.s.upgrades[id]?.[g.group] === o.id;
+      return `<button data-up="${id}|${g.group}|${o.id}" title="${o.desc}" style="font-size:10px;padding:1px 3px;background:${on ? '#6a3a14' : '#221a14'};color:${on ? '#fc6' : '#aaa'};border:1px solid #664">${o.name}</button>`; }).join('')}</div>`).join('');
+    const poolHtml = KNOWN_MOVES.map((id) => `<div style="text-align:center;width:90px">${this.icon(id, `data-pool="${id}" data-move="${id}"`)}<small style="color:#999">${slots.includes(id) ? SLOT_LABELS[slots.indexOf(id)] : '—'}</small>${sockHtml(id)}${upHtml(id)}<div style="color:#776;font-size:10px">${moveTags(id).join(' ')}</div></div>`).join('');
+    const bagHtml = b.s.gems.length ? b.s.gems.map((g, i) => `<div data-gem="${g}" data-gi="${i}" draggable="true" title="${GEMS[g]?.desc ?? ''}（適用：${(GEMS[g]?.tagsAny ?? []).join('/')}）" style="cursor:grab;padding:3px 7px;border:1px solid #47a;border-radius:10px;background:#123;color:#bdf">${GEMS[g]?.name ?? g}</div>`).join('') : '<span style="color:#666">（空。K 鍵除錯取得寶石）</span>';
     this.el.innerHTML = `<div style="color:#fc6;margin-bottom:6px">${t('skills.title')}</div><div style="display:flex;gap:10px">${slotHtml}</div>
       <div style="margin:10px 0 6px;color:#aaa">${t('skills.pool')}</div><div style="display:flex;gap:10px">${poolHtml}</div>
+      <div style="margin:10px 0 4px;color:#aaa">輔助寶石背包（拖到招式下方插槽；插槽數依進化階段 1/2/3，寶石跟著招式走）${this.gemMsg ? ` <span style="color:#f88">${this.gemMsg}</span>` : ''}</div><div style="display:flex;gap:6px;flex-wrap:wrap">${bagHtml}</div>
       <div style="color:#888;margin-top:8px">${t('skills.hint')}</div>`;
+    this.el.querySelectorAll<HTMLDivElement>('[data-gem]').forEach((d) => d.addEventListener('dragstart', (ev) => { ev.dataTransfer?.setData('text/plain', JSON.stringify({ gem: d.dataset.gem })); }));
+    this.el.querySelectorAll<HTMLDivElement>('[data-socket]').forEach((d) => {
+      const [mid = '', si = '0'] = (d.dataset.socket ?? '').split(':');
+      d.addEventListener('dragover', (ev) => ev.preventDefault());
+      d.addEventListener('drop', (ev) => { ev.preventDefault(); ev.stopPropagation();
+        try { const p = JSON.parse(ev.dataTransfer?.getData('text/plain') ?? '') as { gem?: string }; if (!p.gem) return;
+          const res = b.socket(mid, Number(si), p.gem, moveTags(mid)); this.gemMsg = res.ok ? '' : res.reason === 'incompatible' ? `${GEMS[p.gem]?.name} 不適用於此招式` : `無法鑲嵌：${res.reason}`; this.render(); this.onChange();
+        } catch { /* foreign drop */ } });
+      d.addEventListener('contextmenu', (ev) => { ev.preventDefault(); ev.stopPropagation(); b.unsocket(mid, Number(si)); this.render(); this.onChange(); });
+    });
+    this.el.querySelectorAll<HTMLButtonElement>('[data-up]').forEach((d) => d.addEventListener('click', () => {
+      const [mid = '', g = '', o = ''] = (d.dataset.up ?? '').split('|'); b.chooseUpgrade(mid, g, b.s.upgrades[mid]?.[g] === o ? null : o); this.render(); this.onChange(); }));
     this.el.querySelectorAll<HTMLDivElement>('[data-move]').forEach((d) => {
       d.addEventListener('dragstart', (ev) => { ev.dataTransfer?.setData('text/plain', JSON.stringify({ move: d.dataset.move, fromSlot: d.dataset.slot ?? null })); });
     });

@@ -1,0 +1,9 @@
+{
+  "statuses": {
+    "ember-seed": { "name": "餘燼", "maxStacks": 1, "duration": 5 }
+  },
+  "reactions": [
+    { "id": "ember-detonate", "name": "餘燼引爆", "trigger": { "tagsAll": ["area", "fire"] }, "requires": "ember-seed", "consume": true,
+      "effect": { "type": "burst", "r": 72, "mult": 0.6 } }
+  ]
+}
