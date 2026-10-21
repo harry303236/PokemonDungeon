@@ -4,13 +4,14 @@
  *   1 variant   - D4-style move variants / per-skill upgrades; may add/remove tags
  *   2 shape     - projectile count / spread / fork / extra beams
  *   3 prehit    - pierce
- *   4 onhit     - chain, ignite (burn chance), applied statuses
- *   5 reaction  - consume/detonate statuses (rules in reactions.json; resolved at hit time)
- *   6 numeric   - % increases / more multipliers (talents, gems)
+ *   4 settle    - reactions: consume/detonate statuses that existed BEFORE this hit (pre-hit snapshot)
+ *   5 onhit     - chain, delayed marks, seeds
+ *   6 status    - apply new statuses (ignite / burn chance, applies)
+ *   7 numeric   - % increases / more multipliers (talents, gems)
  * Compatibility is checked against the spec's tags *at the time the modifier's stage runs*, so a stage-1 variant that
  * adds a tag (e.g. 'area') unlocks later-stage modifiers that need it.
  */
-export const STAGES = ['variant', 'shape', 'prehit', 'onhit', 'reaction', 'numeric'] as const;
+export const STAGES = ['variant', 'shape', 'prehit', 'settle', 'onhit', 'status', 'numeric'] as const;
 export type Stage = (typeof STAGES)[number];
 
 export interface StatusApply { status: string; chance: number; duration: number }

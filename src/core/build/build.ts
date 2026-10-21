@@ -13,8 +13,9 @@ for (const e of validateTalentData(TALENTS)) console.warn(`[talents] ${e}`);
 export interface DirectorData {
   modifierOrder: string[];
   moves: { id: string; name: string; tags: string[]; variants: { id: string; name: string; effect: string; addTags: string[]; rules: string[] }[] }[];
-  supportGems: { id: string; name: string; requiresTags: string[]; excludesTags?: string[]; effect: string }[];
+  supportGems: { id: string; name: string; requiresAnyTags: string[]; excludesTags?: string[]; effect: string; note?: string }[];
   reactions: { id: string; trigger: string; effect: string }[];
+  reactionRules?: { reactionGeneratedHitsCanTrigger: boolean; depthIncrementsPerReaction: boolean; maxDepth: number; oncePerObjectPerFrame: boolean };
 }
 interface Bindings {
   moveIdMap: Record<string, string>; stageMap: Record<string, string>;
@@ -33,7 +34,7 @@ export function validateDirector(d: DirectorData = DIRECTOR, b: Bindings = BIND)
   if (order.join() !== STAGES.join()) errs.push(`modifierOrder ${d.modifierOrder.join(' > ')} does not map to engine STAGES ${STAGES.join(' > ')}`);
   const vIds = new Set<string>();
   for (const m of d.moves) for (const v of m.variants) { if (vIds.has(v.id)) errs.push(`duplicate variant ${v.id}`); vIds.add(v.id); if (!b.variants[v.id]) errs.push(`variant ${v.id}: no engine binding (stub)`); }
-  for (const g of d.supportGems) if (!b.gems[g.id]) errs.push(`gem ${g.id}: no engine binding (stub)`);
+  for (const g of d.supportGems) { if (!b.gems[g.id]) errs.push(`gem ${g.id}: no engine binding (stub)`); if (!Array.isArray(g.requiresAnyTags)) errs.push(`gem ${g.id}: missing requiresAnyTags`); }
   for (const r of d.reactions) if (!b.reactions[r.id]) errs.push(`reaction ${r.id}: no engine binding (stub)`);
   for (const k of Object.keys(b.variants)) if (!vIds.has(k)) errs.push(`binding for unknown variant ${k}`);
   return errs;
@@ -44,7 +45,7 @@ export interface GemDef extends OpsDef { name: string; desc: string; icon?: stri
 export const GEMS: Record<string, GemDef> = Object.fromEntries(DIRECTOR.supportGems.map((g) => {
   const b = BIND.gems[g.id];
   return [g.id, { id: g.id, name: g.name, desc: g.effect, icon: b?.icon, stub: !b, stage: b?.stage ?? 'onhit', ops: b?.ops ?? [],
-    tagsAny: g.requiresTags.length ? g.requiresTags : undefined, tagsNone: g.excludesTags } satisfies GemDef];
+    tagsAny: g.requiresAnyTags?.length ? g.requiresAnyTags : undefined, tagsNone: g.excludesTags } satisfies GemDef];
 }));
 export interface MoveTagDef { tags: string[]; applies?: StatusApply[] }
 const LOCAL_TAGS = tagsJson as unknown as Record<string, MoveTagDef>;
@@ -61,6 +62,8 @@ export interface ReactionRule { id: string; name: string; desc: string; stub: bo
 export const STATUSES = (reactionsJson as unknown as { statuses: Record<string, { name: string; maxStacks: number; duration: number }> }).statuses;
 export const REACTIONS: ReactionRule[] = DIRECTOR.reactions.map((r) => { const b = BIND.reactions[r.id];
   return { id: r.id, name: r.trigger, desc: r.effect, stub: !b, hook: b?.hook ?? 'hit', trigger: b?.trigger ?? {}, requires: b?.requires ?? 'never', effect: b?.effect ?? { type: 'none' }, vfx: b?.vfx }; });
+/** Director reaction-chain rules (defaults if absent). */
+export const REACTION_RULES = { reactionGeneratedHitsCanTrigger: true, depthIncrementsPerReaction: true, maxDepth: 3, oncePerObjectPerFrame: true, ...(DIRECTOR.reactionRules ?? {}) };
 export const reactionsFor = (hook: ReactionRule['hook']): ReactionRule[] => REACTIONS.filter((r) => !r.stub && r.hook === hook);
 export function triggerMatches(t: ReactionRule['trigger'], tags: Set<string>, moveId: string, variant: string | null): boolean {
   if (t.variantAny && !(variant && t.variantAny.includes(variant))) return false;
@@ -121,8 +124,15 @@ export class Build {
     const n = socketCount(this.ctx().evoStage1); const cur = this.s.sockets[moveId] ?? [];
     return Array.from({ length: n }, (_, i) => cur[i] ?? null);
   }
-  /** Socket a gem from the bag (swaps out any gem already there). */
-  socket(moveId: string, idx: number, gemId: string, tags: string[]): { ok: boolean; reason?: string } {
+  /** Base move tags + tags added by the currently chosen upgrades/variant (e.g. ft_spread adds 'area' -> aoe gem fits). */
+  effectiveTags(moveId: string, base = moveTags(moveId)): string[] {
+    const t = new Set(base);
+    for (const g of SKILL_UPGRADES[moveId] ?? []) { const o = g.options.find((x) => x.id === this.s.upgrades[moveId]?.[g.group]); for (const op of o?.ops ?? []) if (op.op === 'addTag') t.add(op.value); else if (op.op === 'removeTag') t.delete(op.value); }
+    return [...t];
+  }
+  /** Socket a gem from the bag (swaps out any gem already there). Compatibility uses effective (variant-modified) tags. */
+  socket(moveId: string, idx: number, gemId: string, _tags?: string[]): { ok: boolean; reason?: string } {
+    const tags = this.effectiveTags(moveId);
     if (idx < 0 || idx >= socketCount(this.ctx().evoStage1)) return { ok: false, reason: 'socket' };
     const bi = this.s.gems.indexOf(gemId); if (bi < 0) return { ok: false, reason: 'notInBag' };
     if (!gemFits(gemId, moveId, tags)) return { ok: false, reason: 'incompatible' };

@@ -7,7 +7,7 @@ import { calcStats, xpToNext } from './stats/stat-calc';
 import { calcDamage } from './combat/damage';
 import { moveCooldown, energyCost } from './moves/cooldown';
 import { BASIC_MOVE, DEFAULT_SLOTS, assignSlot, validateSlots, type Slots } from './moves/loadout';
-import { Build, ensureBuild, moveTags, MOVE_TAGS, STATUSES, GEMS, reactionsFor, triggerMatches, type BuildSave, type ReactionRule } from './build/build';
+import { Build, ensureBuild, moveTags, MOVE_TAGS, STATUSES, GEMS, reactionsFor, triggerMatches, REACTION_RULES, type BuildSave, type ReactionRule } from './build/build';
 import { baseSpec, buildMoveSpec, dmgFactor, areaFactor, type Modifier, type MoveSpec } from './build/pipeline';
 import { emptyBonuses, type PlayerBonuses } from './build/talents';
 import { findPath, clampToFloor, hasLineOfSight, type Pt } from './dungeon/pathfind';
@@ -41,6 +41,8 @@ const T = BALANCE.TILE;
 
 interface EquipStats { power: number; cdr: number; leech: number; kindling: boolean; extraProj: boolean; pierce: boolean; split: boolean; allIn: boolean }
 
+interface PreHit { burn?: { stacks: number; t: number; src: number }; statuses: Set<string> }
+
 export class Sim {
   readonly bus = new EventBus();
   world = new World();
@@ -69,6 +71,8 @@ export class Sim {
   /** 'Sunny day' weather timer (director reactions sun_chain / ground_sun). No in-game source yet: debug Shift+K. */
   sunT = 0;
   private trailAcc = 0;
+  /** reaction once-per-object-per-frame guard (cleared every step) */
+  private reactedThisFrame = new Set<string>();
   bon: PlayerBonuses = emptyBonuses();
 
   constructor(public progress: Progress) {
@@ -171,6 +175,7 @@ export class Sim {
     for (const [k, v] of this.cooldowns) this.cooldowns.set(k, Math.max(0, v - dt));
     this.dodgeCd = Math.max(0, this.dodgeCd - dt);
     this.sunT = Math.max(0, this.sunT - dt);
+    this.reactedThisFrame.clear();
     this.potionCd = Math.max(0, this.potionCd - dt);
     p.iframes = Math.max(0, (p.iframes ?? 0) - dt);
     if (!p.dead) this.playerInput(dt, cmd);
@@ -361,7 +366,7 @@ export class Sim {
       for (const m of this.hash.near(p.x, p.y, R + 20)) {
         if (m.dead) continue; const dx = p.x - m.x, dy = p.y - m.y; const d = Math.hypot(dx, dy); if (d > R) continue;
         const pull = Math.max(0, d - 28); if (d > 0) this.moveEntity(m, (dx / d) * pull, (dy / d) * pull);
-        if (sp.flags.ramStun) this.applyStatus(m, 'stun', sp.flags.ramStun, p.id);
+        if (m.isBoss) { if (sp.flags.ramBossVulnPct) this.applyStatus(m, 'dmg-vuln', 3, p.id); } else if (sp.flags.ramStun) this.applyStatus(m, 'stun', sp.flags.ramStun, p.id);
       }
       this.bus.emit('vfx', { key: 'fc-ram', x: p.x, y: p.y, r: R });
     }
@@ -387,6 +392,9 @@ export class Sim {
     const spec = src.team === 'player' ? mods?.spec : undefined;
     if (spec) mult *= dmgFactor(spec);
     if (target.statuses?.['fire-vuln'] && moveData(moveId).type === 'fire') mult *= 1 + (spec?.flags.bossFireVulnPct ?? 20) / 100;
+    if (target.statuses?.['dmg-vuln'] && src.team === 'player') mult *= 1.1;
+    // snapshot statuses that existed BEFORE this hit: settle-stage reactions may only consume these (never a status this hit applies)
+    const pre: PreHit = { burn: target.burn ? { ...target.burn } : undefined, statuses: new Set(Object.keys(target.statuses ?? {})) };
     const m = moveData(moveId);
     const a = src.stats; const d = target.stats;
     if (!a || !d) return 0;
@@ -403,20 +411,21 @@ export class Sim {
     // status
     const st = m.status;
     let burnChance = spec ? spec.burnChance : st?.id === 'burn' ? st.chance / 100 : 0;
+    // Fixed hit-resolution order (director modifierOrder): settle pre-existing statuses -> on-hit spawners -> apply NEW statuses
     if (spec && !target.dead) {
-      // stage 4: statuses applied on hit
-      for (const ap of spec.applies) if (this.rng.next() < ap.chance) this.applyStatus(target, ap.status, ap.duration, src.id);
-      // stage 5: reactions (data rules: trigger tags + required status -> effect)
-      if (!mods?.noReact) this.reactions(src, target, spec, mods, chain);
-      // on-hit spawners (after reactions so a cast never detonates its own fresh seed/mark)
+      // settle: reactions may only consume statuses from the pre-hit snapshot
+      if (!mods?.noReact) this.reactions(src, target, spec, mods, chain, pre);
+      // on-hit: delayed marks, seeds (never detonated by the same hit)
       if (!mods?.fromMark && spec.flags.delayedMark && !target.statuses?.marked) {
         this.applyStatus(target, 'marked', 1, src.id);
         this.world.spawn({ kind: 'blast', sub: 'sticky', x: target.x, y: target.y, r: 60 * areaFactor(spec), team: 'player', owner: src.id, moveId, life: 1, delay: 1, dmgMult: 0.5, mods: { ...(mods ?? { powerBonus: 0, leech: 0, kindling: false }), fromMark: true } });
       }
-      if (!mods?.fromMark && !mods?.noReact && spec.flags.seedGround) this.spawnGround('seed', target.x, target.y, spec.flags.seedGround, src.id);
+      if (!mods?.fromMark && spec.flags.seedGround) this.spawnGround('seed', target.x, target.y, spec.flags.seedGround, src.id);
     }
+    // apply new statuses last
+    if (spec && !target.dead) for (const ap of spec.applies) if (this.rng.next() < ap.chance) this.applyStatus(target, ap.status, ap.duration, src.id);
     if (mods?.kindling && m.type === 'fire' && canTrigger(chain, 'kindling', target.id)) burnChance += 0.15;
-    if (burnChance > 0 && this.rng.next() < burnChance) this.applyBurn(target, src.id);
+    if (burnChance > 0 && !target.dead && this.rng.next() < burnChance) this.applyBurn(target, src.id);
     if (moveId === 'fire-spin') target.bound = { t: 1, src: src.id };
     if (target.hp <= 0 && !target.dead) { this.kill(target, src.id, 'hit', chain); if (spec?.flags.energyOnKill) this.energy = Math.min(BALANCE.energyMax, this.energy + spec.flags.energyOnKill); }
     return dmg;
@@ -428,23 +437,25 @@ export class Sim {
   }
   private num = (r: ReactionRule, k: string, d: number): number => { const v = r.effect[k]; return typeof v === 'number' ? v : d; };
   /** Stage-5 'hit' reactions (rules: director-bindings.json). requires: ground:seed | status:<id> | mark:sticky */
-  private reactions(src: Entity, target: Entity, spec: MoveSpec, mods: MoveMods | undefined, chain: ChainContext): void {
+  private reactions(src: Entity, target: Entity, spec: MoveSpec, mods: MoveMods | undefined, chain: ChainContext, pre: PreHit): void {
+    if (chain.depth >= REACTION_RULES.maxDepth) return;
     for (const rule of reactionsFor('hit')) {
       if (spec.reactionsOff.has(rule.id) || !triggerMatches(rule.trigger, spec.tags, spec.moveId, spec.variant)) continue;
+      const once = `${rule.id}:${target.id}`; if (REACTION_RULES.oncePerObjectPerFrame && this.reactedThisFrame.has(once)) continue;
       const req = rule.requires;
       if (req === 'ground:seed') {
         const seed = this.world.query('ground').find((g) => g.sub === 'seed' && !g.dead && Math.hypot(g.x - target.x, g.y - target.y) < 40 + target.r);
-        if (!seed || !canTrigger(chain, `reaction:${rule.id}`, seed.id)) continue;
+        if (!seed || !canTrigger(chain, `reaction:${rule.id}`, seed.id)) continue; this.reactedThisFrame.add(once);
         this.detonateSeeds(seed, src, spec, mods, rule, chain);
       } else if (req === 'status:burn') {
-        const b = target.burn; if (!b || target.hp === undefined || !target.maxHp) continue;
+        const b = target.burn; if (!b || !pre.burn || target.hp === undefined || !target.maxHp) continue; this.reactedThisFrame.add(once);
         const left = target.maxHp * (target.isBoss ? BALANCE.burnPctBoss : BALANCE.burnPctPerSec) * b.stacks * b.t * (1 + this.bon.burnDmgPct / 100) * this.num(rule, 'mult', 1.5);
         target.burn = undefined; target.hp -= left;
         this.bus.emit('damage:dealt', { target: target.id, amount: Math.round(left), isCrit: true, typeEff: 1, x: target.x, y: target.y - target.r });
         this.bus.emit('reaction', { id: rule.id, x: target.x, y: target.y, r: 50, vfx: rule.vfx });
         if (target.hp <= 0) this.kill(target, src.id, 'burn', chain);
       } else if (req.startsWith('status:')) {
-        const st = req.slice(7); if (!target.statuses?.[st]) continue;
+        const st = req.slice(7); if (!target.statuses?.[st] || !pre.statuses.has(st)) continue; this.reactedThisFrame.add(once);
         delete target.statuses[st]; this.bus.emit('reaction', { id: rule.id, x: target.x, y: target.y, r: this.num(rule, 'r', 60), vfx: rule.vfx });
         this.burst(src, target.x, target.y, this.num(rule, 'r', 60), spec.moveId, this.num(rule, 'mult', 0.5), mods, chain);
       } else if (req === 'mark:sticky') {
@@ -456,7 +467,8 @@ export class Sim {
     }
   }
   private burst(src: Entity, x: number, y: number, r: number, moveId: string, mult: number, mods: MoveMods | undefined, chain: ChainContext): void {
-    const bm: MoveMods = { ...(mods ?? { powerBonus: 0, leech: 0, kindling: false }), noReact: true };
+    // director reactionRules: reaction-generated hits may trigger further reactions at depth+1 (max depth guards loops)
+    const bm: MoveMods = { ...(mods ?? { powerBonus: 0, leech: 0, kindling: false }), noReact: !REACTION_RULES.reactionGeneratedHitsCanTrigger, fromMark: true };
     for (const t of this.hash.near(x, y, r + 30)) if (!t.dead && Math.hypot(t.x - x, t.y - y) < r + t.r) this.hit(src, t, moveId, mult, bm, childChain(chain));
   }
   /** seed_detonate: explode the seed, then chain-detonate seeds within chainRange (BFS). */
@@ -553,12 +565,15 @@ export class Sim {
           const m = moveData(e.moveId ?? 'flamethrower');
           const perTick = ((e.tick ?? 0.1) / (m.params.duration ?? 0.8)) * BALANCE.sustainedComp * (e.delay ?? 1);
           const a = p.rot + e.rot; const cx = Math.cos(a), cy = Math.sin(a); const len = this.beamReach(p.x, p.y, a, e.len ?? 300); e.reach = len;
-          let far: Entity | null = null; let farAlong = 0;
+          let far: Entity | null = null; let farAlong = 0; const inBeam: [Entity, number][] = [];
           for (const t of this.hash.near(p.x + cx * len / 2, p.y + cy * len / 2, len / 2 + 40)) {
             const rx = t.x - p.x, ry = t.y - p.y; const along = rx * cx + ry * cy; const perp = Math.abs(-rx * cy + ry * cx);
             const sp = e.mods?.spec; const dur = sp?.params.duration ?? 0.8; const w = (e.width ?? 22) * (1 + (sp?.widenOverLife ?? 0) * Math.max(0, 1 - (e.life ?? 0) / dur));
-            if (!t.dead && along > 0 && along < len && perp < w / 2 + t.r) { this.hit(p, t, m.id, perTick, e.mods, newChain(this.rootSeq++)); if (!far || along > farAlong) { far = t; farAlong = along; } }
+            if (!t.dead && along > 0 && along < len && perp < w / 2 + t.r) inBeam.push([t, along]);
           }
+          // ft_focus: beam hits only the nearest 1 + pierce targets (inherent pierce 2; pierce gem = +2 extra)
+          inBeam.sort((x, y) => x[1] - y[1]); const cap = e.mods?.spec?.flags.beamPierceCap ? 1 + (e.mods.spec.pierce ?? 0) : Infinity;
+          for (const [t, along] of inBeam.slice(0, cap)) { this.hit(p, t, m.id, perTick, e.mods, newChain(this.rootSeq++)); if (!far || along > farAlong) { far = t; farAlong = along; } }
           // beam chain (gem 'chain' on a beam with the projectile tag, e.g. ft_focus): jump from the farthest target hit
           const sp2 = e.mods?.spec; let cur = far; let mul = perTick; const hitIds = new Set<number>(cur ? [cur.id] : []);
           for (let k = 0; cur && sp2 && k < sp2.chain; k++) {

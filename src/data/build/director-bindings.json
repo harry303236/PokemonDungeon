@@ -1,35 +1,379 @@
 {
-  "_doc": "Engine bindings for charmander-moves-gems.json (director content). Director file = names/tags/requirements/prose; this file = executable pipeline ops, reaction hooks and VFX keys. Entries missing here are loaded as STUBS (shown in UI, warn once).",
-  "moveIdMap": { "fire_spin": "fire-spin", "fire_blast": "fire-blast", "flame_charge": "flare-blitz" },
-  "stageMap": { "variant": "variant", "projectileShape": "shape", "preHit": "prehit", "onHit": "onhit", "reaction": "reaction", "statScaling": "numeric" },
-  "variants": {
-    "ember_volley": { "vfx": "ember-volley", "ops": [{ "op": "add", "field": "projectiles", "value": 2 }, { "op": "set", "field": "spreadDeg", "value": 10 }, { "op": "flag", "key": "volley", "value": 1 }] },
-    "ember_seed":   { "vfx": "ember", "ops": [{ "op": "flag", "key": "seedGround", "value": 6 }] },
-    "ft_focus":     { "vfx": "ft-focus", "ops": [{ "op": "param", "key": "width", "mul": 0.3 }, { "op": "param", "key": "length", "mul": 1.4 }, { "op": "mul", "field": "moreDmg", "value": 1.25 }, { "op": "flag", "key": "chainDmgStep", "value": -0.2 }] },
-    "ft_spread":    { "vfx": "ft-spread", "ops": [{ "op": "add", "field": "beams", "value": 4 }, { "op": "set", "field": "beamSpreadDeg", "value": 14 }, { "op": "param", "key": "length", "mul": 0.45 }, { "op": "mul", "field": "moreDmg", "value": 0.35 }, { "op": "flag", "key": "groundFire", "value": 3 }] },
-    "fs_prison":    { "vfx": "fs-prison", "ops": [{ "op": "flag", "key": "prison", "value": 2 }, { "op": "flag", "key": "bossFireVulnPct", "value": 20 }] },
-    "fs_tornado":   { "vfx": "fs-tornado", "ops": [{ "op": "flag", "key": "followCaster", "value": 1 }] },
-    "fb_meteor":    { "vfx": "fb-meteor", "ops": [{ "op": "param", "key": "delay", "add": 0.6 }, { "op": "mul", "field": "moreDmg", "value": 1.6 }] },
-    "fb_star":      { "vfx": "fb-star", "ops": [{ "op": "flag", "key": "starBolts", "value": 5 }, { "op": "mul", "field": "moreDmg", "value": 0.6 }] },
-    "fc_comet":     { "vfx": "fc-comet", "ops": [{ "op": "flag", "key": "trailFire", "value": 3 }] },
-    "fc_ram":       { "vfx": "fc-ram", "ops": [{ "op": "flag", "key": "ramPull", "value": 140 }, { "op": "flag", "key": "ramStun", "value": 0.8 }] }
+ "_doc": "Engine bindings for charmander-moves-gems.json (director content). Director file = names/tags/requirements/prose; this file = executable pipeline ops, reaction hooks and VFX keys. Entries missing here are loaded as STUBS (shown in UI, warn once).",
+ "moveIdMap": {
+  "fire_spin": "fire-spin",
+  "fire_blast": "fire-blast",
+  "flame_charge": "flare-blitz"
+ },
+ "stageMap": {
+  "variant": "variant",
+  "projectileShape": "shape",
+  "preHit": "prehit",
+  "settleExistingStatus": "settle",
+  "onHit": "onhit",
+  "applyNewStatus": "status",
+  "statScaling": "numeric"
+ },
+ "variants": {
+  "ember_volley": {
+   "vfx": "ember-volley",
+   "ops": [
+    {
+     "op": "add",
+     "field": "projectiles",
+     "value": 2
+    },
+    {
+     "op": "set",
+     "field": "spreadDeg",
+     "value": 10
+    },
+    {
+     "op": "flag",
+     "key": "volley",
+     "value": 1
+    }
+   ]
   },
-  "gems": {
-    "multi":          { "stage": "shape",  "icon": "gem-multi-projectile", "ops": [{ "op": "add", "field": "projectiles", "value": 2 }, { "op": "add", "field": "spreadDeg", "value": 12 }, { "op": "mul", "field": "moreDmg", "value": 0.75 }] },
-    "pierce":         { "stage": "prehit", "icon": "gem-pierce", "ops": [{ "op": "add", "field": "pierce", "value": 2 }] },
-    "chain":          { "stage": "onhit",  "icon": "gem-chain", "ops": [{ "op": "add", "field": "chain", "value": 2 }] },
-    "fork":           { "stage": "shape",  "icon": "gem-fork", "ops": [{ "op": "add", "field": "fork", "value": 1 }] },
-    "delayed":        { "stage": "onhit",  "icon": "gem-delayed-blast", "ops": [{ "op": "flag", "key": "delayedMark", "value": 1 }] },
-    "aoe":            { "stage": "numeric","icon": "gem-increased-area", "ops": [{ "op": "add", "field": "areaPct", "value": 30 }] },
-    "ignite":         { "stage": "onhit",  "icon": "gem-ignite", "ops": [{ "op": "add", "field": "burnChance", "value": 0.25 }] },
-    "energy_on_kill": { "stage": "onhit",  "icon": "gem-energy-on-kill", "ops": [{ "op": "flag", "key": "energyOnKill", "value": 3 }] }
+  "ember_seed": {
+   "vfx": "ember",
+   "ops": [
+    {
+     "op": "flag",
+     "key": "seedGround",
+     "value": 6
+    }
+   ]
   },
-  "reactions": {
-    "seed_detonate":       { "hook": "hit",   "trigger": { "tagsAll": ["fire"] }, "requires": "ground:seed", "effect": { "type": "seed-detonate", "r": 72, "mult": 0.7, "chainRange": 96 }, "vfx": "detonate" },
-    "burn_consume":        { "hook": "hit",   "trigger": { "variantAny": ["ft_focus", "fb_star"] }, "requires": "status:burn", "effect": { "type": "consume-burn", "mult": 1.5 }, "vfx": "rx-burn-consume" },
-    "sticky_early":        { "hook": "hit",   "trigger": { "tagsAll": ["fire"] }, "requires": "mark:sticky", "effect": { "type": "early-detonate" }, "vfx": "detonate" },
-    "charge_through_spin": { "hook": "dash",  "trigger": { "moveAny": ["flare-blitz"] }, "requires": "zone:own", "effect": { "type": "attach-zone", "scale": 0.7 }, "vfx": "fire-spin" },
-    "sun_chain":           { "hook": "chain", "trigger": {}, "requires": "weather:sun", "effect": { "type": "chain-bonus", "perJump": 0.1 }, "vfx": "rx-sun-chain" },
-    "ground_sun":          { "hook": "ground","trigger": {}, "requires": "weather:sun", "effect": { "type": "ground-extend", "mult": 2 }, "vfx": "rx-ground-sun" }
+  "ft_focus": {
+   "vfx": "ft-focus",
+   "ops": [
+    {
+     "op": "param",
+     "key": "width",
+     "mul": 0.3
+    },
+    {
+     "op": "param",
+     "key": "length",
+     "mul": 1.4
+    },
+    {
+     "op": "mul",
+     "field": "moreDmg",
+     "value": 1.25
+    },
+    {
+     "op": "flag",
+     "key": "chainDmgStep",
+     "value": -0.2
+    },
+    {
+     "op": "add",
+     "field": "pierce",
+     "value": 2
+    },
+    {
+     "op": "flag",
+     "key": "beamPierceCap",
+     "value": 1
+    }
+   ]
+  },
+  "ft_spread": {
+   "vfx": "ft-spread",
+   "ops": [
+    {
+     "op": "add",
+     "field": "beams",
+     "value": 4
+    },
+    {
+     "op": "set",
+     "field": "beamSpreadDeg",
+     "value": 14
+    },
+    {
+     "op": "param",
+     "key": "length",
+     "mul": 0.45
+    },
+    {
+     "op": "mul",
+     "field": "moreDmg",
+     "value": 0.35
+    },
+    {
+     "op": "flag",
+     "key": "groundFire",
+     "value": 3
+    }
+   ]
+  },
+  "fs_prison": {
+   "vfx": "fs-prison",
+   "ops": [
+    {
+     "op": "flag",
+     "key": "prison",
+     "value": 2
+    },
+    {
+     "op": "flag",
+     "key": "bossFireVulnPct",
+     "value": 20
+    }
+   ]
+  },
+  "fs_tornado": {
+   "vfx": "fs-tornado",
+   "ops": [
+    {
+     "op": "flag",
+     "key": "followCaster",
+     "value": 1
+    }
+   ]
+  },
+  "fb_meteor": {
+   "vfx": "fb-meteor",
+   "ops": [
+    {
+     "op": "param",
+     "key": "delay",
+     "add": 0.6
+    },
+    {
+     "op": "mul",
+     "field": "moreDmg",
+     "value": 1.6
+    }
+   ]
+  },
+  "fb_star": {
+   "vfx": "fb-star",
+   "ops": [
+    {
+     "op": "flag",
+     "key": "starBolts",
+     "value": 5
+    },
+    {
+     "op": "mul",
+     "field": "moreDmg",
+     "value": 0.6
+    }
+   ]
+  },
+  "fc_comet": {
+   "vfx": "fc-comet",
+   "ops": [
+    {
+     "op": "flag",
+     "key": "trailFire",
+     "value": 3
+    }
+   ]
+  },
+  "fc_ram": {
+   "vfx": "fc-ram",
+   "ops": [
+    {
+     "op": "flag",
+     "key": "ramPull",
+     "value": 140
+    },
+    {
+     "op": "flag",
+     "key": "ramStun",
+     "value": 0.8
+    },
+    {
+     "op": "flag",
+     "key": "ramBossVulnPct",
+     "value": 10
+    }
+   ]
   }
+ },
+ "gems": {
+  "multi": {
+   "stage": "shape",
+   "icon": "gem-multi-projectile",
+   "ops": [
+    {
+     "op": "add",
+     "field": "projectiles",
+     "value": 2
+    },
+    {
+     "op": "add",
+     "field": "spreadDeg",
+     "value": 12
+    },
+    {
+     "op": "mul",
+     "field": "moreDmg",
+     "value": 0.75
+    }
+   ]
+  },
+  "pierce": {
+   "stage": "prehit",
+   "icon": "gem-pierce",
+   "ops": [
+    {
+     "op": "add",
+     "field": "pierce",
+     "value": 2
+    }
+   ]
+  },
+  "chain": {
+   "stage": "onhit",
+   "icon": "gem-chain",
+   "ops": [
+    {
+     "op": "add",
+     "field": "chain",
+     "value": 2
+    }
+   ]
+  },
+  "fork": {
+   "stage": "shape",
+   "icon": "gem-fork",
+   "ops": [
+    {
+     "op": "add",
+     "field": "fork",
+     "value": 1
+    }
+   ]
+  },
+  "delayed": {
+   "stage": "onhit",
+   "icon": "gem-delayed-blast",
+   "ops": [
+    {
+     "op": "flag",
+     "key": "delayedMark",
+     "value": 1
+    }
+   ]
+  },
+  "aoe": {
+   "stage": "numeric",
+   "icon": "gem-increased-area",
+   "ops": [
+    {
+     "op": "add",
+     "field": "areaPct",
+     "value": 30
+    }
+   ]
+  },
+  "ignite": {
+   "stage": "status",
+   "icon": "gem-ignite",
+   "ops": [
+    {
+     "op": "add",
+     "field": "burnChance",
+     "value": 0.25
+    }
+   ]
+  },
+  "energy_on_kill": {
+   "stage": "onhit",
+   "icon": "gem-energy-on-kill",
+   "ops": [
+    {
+     "op": "flag",
+     "key": "energyOnKill",
+     "value": 3
+    }
+   ]
+  }
+ },
+ "reactions": {
+  "seed_detonate": {
+   "hook": "hit",
+   "trigger": {
+    "tagsAll": [
+     "fire"
+    ]
+   },
+   "requires": "ground:seed",
+   "effect": {
+    "type": "seed-detonate",
+    "r": 72,
+    "mult": 0.7,
+    "chainRange": 96
+   },
+   "vfx": "detonate"
+  },
+  "burn_consume": {
+   "hook": "hit",
+   "trigger": {
+    "variantAny": [
+     "ft_focus",
+     "fb_star"
+    ]
+   },
+   "requires": "status:burn",
+   "effect": {
+    "type": "consume-burn",
+    "mult": 1.5
+   },
+   "vfx": "rx-burn-consume"
+  },
+  "sticky_early": {
+   "hook": "hit",
+   "trigger": {
+    "tagsAll": [
+     "fire"
+    ]
+   },
+   "requires": "mark:sticky",
+   "effect": {
+    "type": "early-detonate"
+   },
+   "vfx": "detonate"
+  },
+  "charge_through_spin": {
+   "hook": "dash",
+   "trigger": {
+    "moveAny": [
+     "flare-blitz"
+    ]
+   },
+   "requires": "zone:own",
+   "effect": {
+    "type": "attach-zone",
+    "scale": 0.7
+   },
+   "vfx": "fire-spin"
+  },
+  "sun_chain": {
+   "hook": "chain",
+   "trigger": {},
+   "requires": "weather:sun",
+   "effect": {
+    "type": "chain-bonus",
+    "perJump": 0.1
+   },
+   "vfx": "rx-sun-chain"
+  },
+  "ground_sun": {
+   "hook": "ground",
+   "trigger": {},
+   "requires": "weather:sun",
+   "effect": {
+    "type": "ground-extend",
+    "mult": 2
+   },
+   "vfx": "rx-ground-sun"
+  }
+ }
 }

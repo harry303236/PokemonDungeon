@@ -3,8 +3,9 @@
   "variant",
   "projectileShape(multi,fork)",
   "preHit(pierce)",
-  "onHit(chain,ignite,delayed)",
-  "reaction",
+  "settleExistingStatus(reaction 只消耗本擊之前已存在的狀態)",
+  "onHit(chain,delayed)",
+  "applyNewStatus(ignite)",
   "statScaling"
  ],
  "moves": [
@@ -133,7 +134,9 @@
      "addTags": [
       "projectile"
      ],
-     "rules": []
+     "rules": [
+      "主爆炸60%，5道火柱各50%"
+     ]
     }
    ]
   },
@@ -163,7 +166,8 @@
       "control"
      ],
      "rules": [
-      "不擊退，近戰流用"
+      "不擊退，近戰流用",
+      "Boss不暈眩，改為受到傷害+10%持續3秒"
      ]
     }
    ]
@@ -173,70 +177,71 @@
   {
    "id": "multi",
    "name": "多重投射",
-   "requiresTags": [
+   "effect": "+2投射物，單發傷害-25%",
+   "requiresAnyTags": [
     "projectile"
-   ],
-   "effect": "+2投射物，單發傷害-25%"
+   ]
   },
   {
    "id": "pierce",
    "name": "穿透",
-   "requiresTags": [
+   "effect": "穿透2個敵人",
+   "requiresAnyTags": [
     "projectile"
    ],
-   "effect": "穿透2個敵人"
+   "note": "凝聚已自帶穿透：插上時改為額外+2穿透"
   },
   {
    "id": "chain",
    "name": "連鎖",
-   "requiresTags": [
+   "effect": "命中後跳躍2次",
+   "requiresAnyTags": [
     "projectile",
     "beam"
-   ],
-   "effect": "命中後跳躍2次"
+   ]
   },
   {
    "id": "fork",
    "name": "分裂",
-   "requiresTags": [
+   "effect": "命中後分成3道斜射",
+   "requiresAnyTags": [
     "projectile",
     "beam"
-   ],
-   "effect": "命中後分成3道斜射"
+   ]
   },
   {
    "id": "delayed",
    "name": "延遲爆發",
-   "requiresTags": [
-    "projectile",
-    "area"
-   ],
    "excludesTags": [
     "delayed"
    ],
-   "effect": "命中處留下印記，1秒後爆炸"
+   "effect": "命中處留下印記，1秒後爆炸",
+   "requiresAnyTags": [
+    "projectile",
+    "area"
+   ]
   },
   {
    "id": "aoe",
    "name": "範圍擴大",
-   "requiresTags": [
+   "effect": "範圍+30%",
+   "requiresAnyTags": [
     "area"
-   ],
-   "effect": "範圍+30%"
+   ]
   },
   {
    "id": "ignite",
    "name": "命中引燃",
-   "requiresTags": [
+   "effect": "命中25%機率燃燒",
+   "requiresAnyTags": [
     "fire"
-   ],
-   "effect": "命中25%機率燃燒"
+   ]
   },
   {
    "id": "energy_on_kill",
    "name": "擊殺回能",
-   "requiresTags": [],
-   "effect": "擊殺回復3 PP能量"
+   "effect": "擊殺回復3 PP能量",
+   "requiresAnyTags": []
   }
  ],
  "reactions": [
@@ -270,5 +275,11 @@
    "trigger": "大晴天時燃燒地面",
    "effect": "持續時間加倍，變成火海"
   }
- ]
+ ],
+ "reactionRules": {
+  "reactionGeneratedHitsCanTrigger": true,
+  "depthIncrementsPerReaction": true,
+  "maxDepth": 3,
+  "oncePerObjectPerFrame": true
+ }
 }

@@ -64,8 +64,8 @@ describe('modifier pipeline', () => {
   const m = (stage: Modifier['stage'], src: string, extra: Partial<Modifier> = {}): Modifier => ({ source: src, stage, apply: () => { log.push(src); }, ...extra });
   it('applies in the fixed stage order regardless of input order', () => {
     log.length = 0;
-    const { applied } = buildMoveSpec(baseSpec('ember', ['projectile', 'fire'], {}, 0), [m('numeric', 'n'), m('reaction', 'r'), m('onhit', 'o'), m('prehit', 'p'), m('shape', 's'), m('variant', 'v')]);
-    expect(log).toEqual(['v', 's', 'p', 'o', 'r', 'n']);
+    const { applied } = buildMoveSpec(baseSpec('ember', ['projectile', 'fire'], {}, 0), [m('numeric', 'n'), m('status', 'st'), m('onhit', 'o'), m('settle', 'r'), m('prehit', 'p'), m('shape', 's'), m('variant', 'v')]);
+    expect(log).toEqual(['v', 's', 'p', 'r', 'o', 'st', 'n']);
     expect(applied.map((a) => a.split(':')[0])).toEqual([...STAGES]);
   });
   it('a stage-1 variant that adds a tag unlocks later tag-gated modifiers', () => {
@@ -135,7 +135,7 @@ describe('director content (charmander-moves-gems.json)', () => {
     it(`${move}/${v} + ${g}`, () => {
       const sim = fresh(); sim.build.s.gems.push(g); sim.build.chooseUpgrade(move, 'variant', v);
       const res = sim.build.socket(move, 0, g, moveTags(move));
-      expect(res.ok).toBe(gemFits(g, move, moveTags(move)));
+      expect(res.ok).toBe(gemFits(g, move, sim.build.effectiveTags(move)));
       const spec = sim.moveSpec(move);
       expect(spec.variant).toBe(v);
       if (res.ok && !GEMS[g]!.stub) expect(spec.tags.size).toBeGreaterThan(0);
@@ -200,5 +200,56 @@ describe('director content (charmander-moves-gems.json)', () => {
     const spec = sim.moveSpec('fire-blast'); expect(spec.tags.has('delayed')).toBe(true);
     const mods = sim.build.modifiersFor('fire-blast'); void mods;
     expect(compatible(GEMS.delayed!, spec.tags, 'fire-blast')).toBe(false);
+  });
+
+  // --- director update 2026-10-21 23:10 ---
+  const mods0 = (sim: Sim, id: string) => ({ powerBonus: 0, leech: 0, kindling: false, spec: sim.moveSpec(id) });
+  it('REGRESSION: burn_consume only consumes burn that existed before the hit (not burn applied by the same hit)', () => {
+    const sim = fresh(); sim.build.chooseUpgrade('flamethrower', 'variant', 'ft_focus'); const p = sim.player;
+    const m = [...sim.world.query('monster')][0]!; m.hp = m.maxHp = 1e6; m.burn = undefined;
+    const ids: string[] = []; sim.bus.on('reaction', (e) => ids.push(e.id));
+    const md = mods0(sim, 'flamethrower'); md.spec.burnChance = 1; // guaranteed ignite on this hit
+    sim.hit(p, m, 'flamethrower', 0.0001, md, newChain(10));
+    expect(m.burn).toBeTruthy(); expect(ids).not.toContain('burn_consume');
+    sim.step(1 / 60, { moveX: 0, moveY: 0, aimX: 0, aimY: 0, slots: [false, false, false, false, false], dodge: false });
+    sim.hit(p, m, 'flamethrower', 0.0001, mods0(sim, 'flamethrower'), newChain(11)); // next hit: pre-existing burn -> consumed
+    expect(ids).toContain('burn_consume'); expect(m.burn).toBeUndefined();
+  });
+  it('reaction rules: max depth 3 and once per object per frame', () => {
+    const sim = fresh(); sim.build.chooseUpgrade('flamethrower', 'variant', 'ft_focus'); const p = sim.player;
+    const m = [...sim.world.query('monster')][0]!; m.hp = m.maxHp = 1e6; const ids: string[] = []; sim.bus.on('reaction', (e) => ids.push(e.id));
+    m.burn = { stacks: 1, t: 4, src: p.id };
+    sim.hit(p, m, 'flamethrower', 0.0001, mods0(sim, 'flamethrower'), { rootId: 1, depth: 3, visited: new Set() });
+    expect(ids).toEqual([]); // depth 3 = max -> no reaction
+    sim.hit(p, m, 'flamethrower', 0.0001, mods0(sim, 'flamethrower'), newChain(12)); expect(ids).toEqual(['burn_consume']);
+    m.burn = { stacks: 1, t: 4, src: p.id };
+    sim.hit(p, m, 'flamethrower', 0.0001, mods0(sim, 'flamethrower'), newChain(13)); expect(ids).toEqual(['burn_consume']); // same frame -> once
+  });
+  it('ft_focus has inherent pierce (3 targets); pierce gem adds +2 (5 targets)', () => {
+    const sim = fresh(); sim.build.chooseUpgrade('flamethrower', 'variant', 'ft_focus');
+    expect(1 + sim.moveSpec('flamethrower').pierce).toBe(3);
+    sim.build.s.gems.push('pierce'); expect(sim.build.socket('flamethrower', 0, 'pierce').ok).toBe(true);
+    expect(1 + sim.moveSpec('flamethrower').pierce).toBe(5);
+    // in-sim: line of 7 monsters, count how many get hit by one tick
+    const p = sim.player; const ms = [...sim.world.query('monster')].slice(0, 7);
+    ms.forEach((m, i) => { m.x = p.x + 40 + i * 30; m.y = p.y; m.hp = m.maxHp = 1e7; m.ai!.state = 'idle'; m.ai!.cd = 99; });
+    const hit = new Set<number>(); sim.bus.on('damage:dealt', (e) => hit.add(e.target));
+    sim.cooldowns.clear(); sim.energy = 999; sim.tryCast('flamethrower', p.x + 300, p.y);
+    sim.step(1 / 60, { moveX: 0, moveY: 0, aimX: p.x + 300, aimY: p.y, slots: [false, false, false, false, false], dodge: false });
+    expect(hit.size).toBe(5);
+  });
+  it('base flamethrower refuses aoe; ft_spread (adds area) accepts it', () => {
+    const sim = fresh(); sim.build.s.gems.push('aoe');
+    expect(sim.build.socket('flamethrower', 0, 'aoe').reason).toBe('incompatible');
+    sim.build.chooseUpgrade('flamethrower', 'variant', 'ft_spread');
+    expect(sim.build.socket('flamethrower', 0, 'aoe').ok).toBe(true);
+    expect(sim.moveSpec('flamethrower').areaPct).toBe(30);
+  });
+  it('fc_ram: bosses are not stunned but take +10% damage for 3 s', () => {
+    const sim = fresh(); sim.build.chooseUpgrade('flare-blitz', 'variant', 'fc_ram'); const p = sim.player;
+    const boss = sim.spawnMonster('onix-boss', p.x + 240, p.y, 10, true); boss.hp = boss.maxHp = 1e7;
+    sim.cooldowns.clear(); sim.energy = 999; sim.tryCast('flare-blitz', p.x + 300, p.y);
+    for (let i = 0; i < 20; i++) sim.step(1 / 60, { moveX: 0, moveY: 0, aimX: p.x + 300, aimY: p.y, slots: [false, false, false, false, false], dodge: false });
+    expect(boss.statuses?.stun).toBeUndefined(); expect(boss.statuses?.['dmg-vuln']?.t).toBeGreaterThan(2.5);
   });
 });

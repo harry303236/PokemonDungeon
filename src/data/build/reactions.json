@@ -14,6 +14,11 @@
    "name": "火傷易傷",
    "maxStacks": 1,
    "duration": 0.6
+  },
+  "dmg-vuln": {
+   "name": "易傷",
+   "maxStacks": 1,
+   "duration": 3
   }
  },
  "reactions": [],

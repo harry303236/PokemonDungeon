@@ -61,7 +61,7 @@ const pct = (k: keyof PlayerBonuses): Handler => (b, total) => { (b as unknown a
 export const TALENT_EFFECTS: Record<string, Handler> = {
   none: () => {},
   atkPct: pct('atkPct'), spAtkPct: pct('spAtkPct'), defPct: pct('defPct'), speedPct: pct('speedPct'), critPct: pct('critPct'),
-  burnChancePct: (b, total) => { b.burnChancePct += total; b.moveMods.push({ source: 'talent:burnChance', stage: 'onhit', tagsAny: ['fire'], apply: (s) => { s.burnChance += total / 100; } }); },
+  burnChancePct: (b, total) => { b.burnChancePct += total; b.moveMods.push({ source: 'talent:burnChance', stage: 'status', tagsAny: ['fire'], apply: (s) => { s.burnChance += total / 100; } }); },
   burnDmgPct: pct('burnDmgPct'), ppRegenPct: pct('ppRegenPct'), dodgeCdPct: pct('dodgeCdPct'), evasionPct: pct('evasionPct'), meleeLifestealPct: pct('meleeLifestealPct'),
   flamethrowerWidth: (b, total) => { b.moveMods.push({ source: 'talent:flamethrowerWidth', stage: 'numeric', moveId: 'flamethrower', apply: (s) => { s.areaPct += total * 100; } }); },
   burnSpread: (b, total) => { b.burnSpread += total; },
