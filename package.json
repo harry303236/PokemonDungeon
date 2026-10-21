@@ -15,8 +15,9 @@
     "validate-data": "tsx scripts/validate-data.ts",
     "fetch-assets": "tsx scripts/fetch-assets.ts --force",
     "postinstall": "tsx scripts/fetch-assets.ts --if-missing",
-    "predev": "tsx scripts/fetch-assets.ts --if-missing",
-    "prebuild": "tsx scripts/fetch-assets.ts --if-missing"
+    "predev": "tsx scripts/fetch-assets.ts --if-missing && tsx scripts/hud-icon-index.ts",
+    "prebuild": "tsx scripts/fetch-assets.ts --if-missing && tsx scripts/hud-icon-index.ts",
+    "hud-icons": "tsx scripts/hud-icon-index.ts"
   },
   "keywords": [],
   "author": "",

@@ -218,3 +218,35 @@ describe('consumables', () => {
     expect(sim.levelsToEvolve()).toBe(11);
   });
 });
+
+import { TapBuffer } from '../src/render/input/tap-buffer';
+describe('tap buffering', () => {
+  const idle = (): InputCommand => ({ moveX: 0, moveY: 0, aimX: 0, aimY: 0, slots: [false, false, false, false, false], dodge: false });
+  it('a tap released before the tick is latched and consumed exactly once', () => {
+    const tb = new TapBuffer(5); tb.press(1); // key down+up within one frame: held state is already false
+    expect(tb.consume()).toEqual([false, true, false, false, false]);
+    expect(tb.consume()).toEqual([false, false, false, false, false]);
+  });
+  it('sim casts on a buffered tap even though the key is no longer held', () => {
+    const sim = new Sim(newProgress(6)); const tb = new TapBuffer(5); tb.press(1); // Q = flamethrower
+    sim.step(1 / 60, { ...idle(), aimX: sim.player.x + 50, aimY: sim.player.y, taps: tb.consume() });
+    expect(sim.cooldownLeft('flamethrower')).toBeGreaterThan(2.5);
+  });
+  it('tap is dropped (not queued forever) when on cooldown or out of PP', () => {
+    const sim = new Sim(newProgress(6)); sim.energy = 0;
+    sim.step(1 / 60, { ...idle(), taps: [false, true, false, false, false] });
+    expect(sim.cooldownLeft('flamethrower')).toBe(0);
+    sim.energy = 100; sim.step(1 / 60, idle()); expect(sim.cooldownLeft('flamethrower')).toBe(0);
+  });
+});
+
+describe('tap during dash', () => {
+  it('is held until the dash ends, then cast', () => {
+    const sim = new Sim(newProgress(6)); const p = sim.player;
+    const cmd = (taps?: boolean[]): InputCommand => ({ moveX: 0, moveY: 0, aimX: p.x + 60, aimY: p.y, slots: [false, false, false, false, false], dodge: false, taps });
+    sim.step(1 / 60, { ...cmd(), dodge: true }); expect(p.dash).toBeDefined();
+    sim.step(1 / 60, cmd([true, false, false, false, false]));
+    for (let i = 0; i < 30 && sim.cooldownLeft('ember') === 0; i++) sim.step(1 / 60, cmd());
+    expect(sim.cooldownLeft('ember')).toBeGreaterThan(0);
+  });
+});

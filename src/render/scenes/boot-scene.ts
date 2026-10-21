@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { queueHudArt, generateHudTextures } from '../hud/hud-art';
+import { queueHudArt, queueHudIcons, generateHudTextures } from '../hud/hud-art';
 import { SpriteProvider, TILESET_KEY, TILESET_URL, type SkinManifest } from '../views/sprite-provider';
 
 /** Loads optional skin (sprites) + CC0 tileset. Missing files are tolerated -> placeholder rendering. */
@@ -18,8 +18,8 @@ export class BootScene extends Phaser.Scene {
     if (SpriteProvider.tiles) this.textures.get(TILESET_KEY).setFilter(Phaser.Textures.FilterMode.NEAREST);
     let m: SkinManifest | undefined;
     try { m = JSON.parse(String(this.cache.text.get('skin-manifest') ?? '')) as SkinManifest; } catch { console.info('[skin] no skin manifest; using placeholders'); }
-    if (!m?.species) { this.scene.start('title'); return; }
-    SpriteProvider.queueSkin(this, m);
+    queueHudIcons(this);
+    if (m?.species) SpriteProvider.queueSkin(this, m);
     this.load.once('complete', () => { SpriteProvider.createAnims(this); this.scene.start('title'); });
     this.load.start();
   }

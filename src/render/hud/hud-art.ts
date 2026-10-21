@@ -3,18 +3,33 @@ import Phaser from 'phaser';
 /** Replaceable HUD texture keys. Drop artist PNGs at public/assets/hud/<key>.png to override; otherwise generated here. */
 export const HUD_KEYS = {
   orbFrame: 'hud-orb-frame', hpFill: 'hud-orb-hp-fill', ppFill: 'hud-orb-pp-fill', slotFrame: 'hud-slot-frame', slotFrameSmall: 'hud-slot-frame-small',
-  xpFrame: 'hud-xp-frame', xpFill: 'hud-xp-fill', glass: 'hud-orb-glass', buffFrame: 'hud-buff-frame',
+  xpFrame: 'hud-xp-frame', xpFill: 'hud-xp-fill', glass: 'hud-orb-glass', buffFrame: 'hud-buff-frame', barBase: 'hud-bar-base',
 } as const;
+/** Bar base slice geometry (1250x445): 7 sockets (5 skills + 2 consumables) + XP groove, in source pixels. */
+export const BAR_BASE = { w: 1250, h: 445, sockets: [168, 319, 471, 624, 777, 930, 1083], socketY: 197, socketW: 116, socketH: 138, xp: { x0: 137, x1: 1105, y: 329.5, h: 29 } };
+/** Icon file names differ from move ids where the artist used the English move name. */
+const ICON_ALIAS: Record<string, string> = { 'flare-blitz': 'flame-charge' };
+export const iconKey = (id: string): string => `icon-${ICON_ALIAS[id] ?? id}`;
+const ICON_INDEX = 'hud-icon-index';
 /** Geometry of the artist slices (procedural fallbacks are drawn to the same sizes). */
 export const ART = {
   orbFrame: { w: 334, h: 348, cx: 167, cy: 176, r: 92 },
   slot: { w: 179, h: 208, inner: 145 }, item: { w: 145, h: 137, inner: 111 },
   xpFrame: { w: 743, h: 66 }, xpFill: { w: 706, h: 34 },
 };
-const ARTIST_KEYS = [HUD_KEYS.orbFrame, HUD_KEYS.hpFill, HUD_KEYS.ppFill, HUD_KEYS.slotFrame, HUD_KEYS.slotFrameSmall, HUD_KEYS.xpFrame, HUD_KEYS.xpFill];
+const ARTIST_KEYS = [HUD_KEYS.barBase, HUD_KEYS.orbFrame, HUD_KEYS.hpFill, HUD_KEYS.ppFill, HUD_KEYS.slotFrame, HUD_KEYS.slotFrameSmall, HUD_KEYS.xpFrame, HUD_KEYS.xpFill];
 /** Artist PNGs live in public/assets/hud/<key>.png (committed, original art). Missing files -> procedural fallback. */
 export function queueHudArt(scene: Phaser.Scene): void {
   for (const k of ARTIST_KEYS) scene.load.image(k, `assets/hud/${k}.png`);
+  scene.load.json(ICON_INDEX, 'assets/hud/icons/index.json');
+}
+/** Second boot phase: queue every icon listed in icons/index.json (e.g. icon-ember -> assets/hud/icons/icon-ember.png). */
+export function queueHudIcons(scene: Phaser.Scene): number {
+  const list = scene.cache.json.get(ICON_INDEX) as unknown;
+  if (!Array.isArray(list)) return 0;
+  let n = 0;
+  for (const name of list) if (typeof name === 'string' && /^[a-z0-9-]+$/.test(name)) { scene.load.image(`icon-${name}`, `assets/hud/icons/icon-${name}.png`); n++; }
+  return n;
 }
 
 type Ctx = CanvasRenderingContext2D;

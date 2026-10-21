@@ -12,6 +12,7 @@ import { SkillPanelView } from '../views/skill-panel-view';
 import { Hud, type HudBuff } from '../hud/hud';
 import { HUD_FONT, PALETTE } from '../hud/hud-theme';
 import { POTION_CD } from '../../core/sim';
+import { TapBuffer } from '../input/tap-buffer';
 import { InputMap, SLOT_LABELS } from '../input/input-map';
 import { InventoryView } from '../views/inventory-view';
 import { saveProgress } from '../save-io';
@@ -29,6 +30,7 @@ export class DungeonScene extends Phaser.Scene {
   private g!: Phaser.GameObjects.Graphics;
   private hud!: Phaser.GameObjects.Graphics;
   private hudBar!: Hud;
+  private taps = new TapBuffer(5);
   private help!: Phaser.GameObjects.Text;
   private hudText!: Phaser.GameObjects.Text;
   private banner!: Phaser.GameObjects.Text;
@@ -75,6 +77,8 @@ export class DungeonScene extends Phaser.Scene {
     this.events.once('shutdown', () => { this.inv.destroy(); this.skills.destroy(); });
     const kb = this.input.keyboard;
     kb?.addCapture('TAB,F1');
+    (['Q', 'W', 'E', 'R'] as const).forEach((key, i) => kb?.on(`keydown-${key}`, (ev: KeyboardEvent) => { if (!ev.repeat && !this.uiOpen()) this.taps.press(i + 1); }));
+    this.input.on('pointerdown', (ptr: Phaser.Input.Pointer) => { if ((ptr.button === 2 || ptr.rightButtonDown()) && !this.uiOpen()) this.taps.press(0); });
     kb?.on('keydown-ONE', () => { if (!this.uiOpen()) this.sim.usePotion(0); });
     kb?.on('keydown-F1', () => this.help.setVisible(!this.help.visible));
     kb?.on('keydown-TAB', () => this.skills.toggle());
@@ -86,7 +90,7 @@ export class DungeonScene extends Phaser.Scene {
     this.bindEvents();
     this.bindPointer();
     // Debug/test hook (read-only use in automated browser checks).
-    (window as unknown as { __pokedungeon?: unknown }).__pokedungeon = { sim: () => this.sim, cam: this.cameras.main };
+    (window as unknown as { __pokedungeon?: unknown }).__pokedungeon = { sim: () => this.sim, cam: this.cameras.main, hudRects: () => this.hudBar.rects };
     this.bindHudDrop();
   }
 
@@ -173,6 +177,7 @@ export class DungeonScene extends Phaser.Scene {
     let stepped = false;
     while (this.acc >= BALANCE.FIXED_DT) {
       this.capturePrev();
+      cmd.taps = stepped ? undefined : this.taps.consume(); // latched taps go to the first tick only
       this.sim.step(BALANCE.FIXED_DT, cmd);
       this.acc -= BALANCE.FIXED_DT;
       stepped = true;

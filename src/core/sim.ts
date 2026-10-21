@@ -13,7 +13,9 @@ import { monster as monsterData, move as moveData, species as speciesData, MONST
 
 export interface InputCommand {
   moveX: number; moveY: number; aimX: number; aimY: number; // aim in world px
-  slots: boolean[]; dodge: boolean; // slots: RMB, Q, W, E, R
+  slots: boolean[]; dodge: boolean; // slots: RMB, Q, W, E, R (held)
+  /** Key-down edges since the last tick (tap buffering); cast this tick if possible. */
+  taps?: boolean[];
   /** One-shot click orders (left click): walk to point via A*, or attack a monster. */
   moveTo?: { x: number; y: number }; attackTarget?: number;
   /** Shift+LMB held: attack in place toward cursor with the primary attack. */
@@ -49,6 +51,7 @@ export class Sim {
   /** Consumables: slot 0 = oran berry (heals POTION_HEAL of maxHp), refilled each floor; slot 1 reserved (empty). */
   potions: [number, number] = [POTION_PER_FLOOR, 0];
   potionCd = 0;
+  private dashTaps = [false, false, false, false, false];
   totalMonsters = 0;
   killed = 0;
   exitOpen = false;
@@ -148,6 +151,8 @@ export class Sim {
     const p = this.player;
     p.rot = Math.atan2(cmd.aimY - p.y, cmd.aimX - p.x);
     if (p.dash) {
+      // taps during a dash/dodge are held until it ends (max one dash) instead of being dropped
+      if (cmd.taps?.some(Boolean)) this.dashTaps = this.dashTaps.map((v, i) => v || !!cmd.taps?.[i]);
       const d = p.dash; d.t -= dt;
       this.moveEntity(p, d.dirX * d.speed * dt, d.dirY * d.speed * dt);
       if (d.moveId) this.dashHits(p);
@@ -167,7 +172,8 @@ export class Sim {
     if (len > 0) { this.order = null; const sp = (p.stats?.moveSpeed ?? 160) * dt; this.moveEntity(p, (cmd.moveX / len) * sp, (cmd.moveY / len) * sp); }
     else if (cmd.forceAttack) { this.order = null; const a = this.primaryAttack(); if (a) this.tryCast(a, cmd.aimX, cmd.aimY); }
     else this.followOrder(dt);
-    cmd.slots.forEach((on, i) => { const id = this.slots[i]; if (on && id) this.tryCast(id, cmd.aimX, cmd.aimY); });
+    const dashTaps = this.dashTaps; this.dashTaps = [false, false, false, false, false];
+    this.slots.forEach((id, i) => { if (id && (cmd.slots[i] || cmd.taps?.[i] || dashTaps[i])) this.tryCast(id, cmd.aimX, cmd.aimY); });
     if (cmd.items?.[0]) this.usePotion(0);
   }
 

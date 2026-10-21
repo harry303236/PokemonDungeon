@@ -14,7 +14,7 @@ export class SkillPanelView {
   open = false;
   constructor(private sim: () => Sim, private onChange: () => void) {
     this.el = document.createElement('div');
-    Object.assign(this.el.style, { position: 'fixed', left: '50%', bottom: '110px', transform: 'translateX(-50%)', background: 'rgba(20,16,28,.95)',
+    Object.assign(this.el.style, { position: 'fixed', left: '50%', bottom: '250px', transform: 'translateX(-50%)', background: 'rgba(20,16,28,.95)',
       border: '1px solid #665', padding: '12px 16px', display: 'none', fontSize: '13px', zIndex: '11', userSelect: 'none', minWidth: '520px' });
     document.body.appendChild(this.el);
   }
