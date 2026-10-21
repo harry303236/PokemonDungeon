@@ -6,6 +6,7 @@ import { clampToFloor } from '../../core/dungeon/pathfind';
 import { monster as monsterData, move as moveData } from '../../data/registry';
 import { moveCooldown } from '../../core/moves/cooldown';
 import { SpriteProvider, TILESET_KEY, type AnimName } from '../views/sprite-provider';
+import { renderPose } from '../views/render-pose';
 import { Fx } from '../views/fx';
 import { SkillPanelView } from '../views/skill-panel-view';
 import { InputMap, SLOT_LABELS } from '../input/input-map';
@@ -35,7 +36,11 @@ export class DungeonScene extends Phaser.Scene {
   private fx!: Fx;
   private bars!: Phaser.GameObjects.Graphics;
   private sprites = new Map<number, Phaser.GameObjects.Sprite>();
-  private lastPos = new Map<number, { x: number; y: number }>();
+  /** Positions before the latest fixed step, for render interpolation. */
+  private prevPos = new Map<number, { x: number; y: number }>();
+  private alpha = 1;
+  /** Entities that actually moved on the last simulated step (not the last painted frame). */
+  private moved = new Set<number>();
   private hurtUntil = new Map<number, number>();
   private castUntil = 0;
   private blasts = new Map<number, { x: number; y: number; r: number }>();
@@ -68,6 +73,7 @@ export class DungeonScene extends Phaser.Scene {
     kb?.on('keydown-L', (ev: KeyboardEvent) => this.sim.debugLevelUp(ev.shiftKey)); // debug
     kb?.on('keydown-R', () => { if (this.sim.player.dead) this.sim.respawn(); });
     kb?.on('keydown-ENTER', () => { if (this.sim.victory) { saveProgress(this.sim.progress); this.scene.start('title'); } });
+    this.cameras.main.setRoundPixels(true);
     this.bindEvents();
     this.bindPointer();
     // Debug/test hook (read-only use in automated browser checks).
@@ -84,7 +90,7 @@ export class DungeonScene extends Phaser.Scene {
       const shift = (ptr.event as MouseEvent | undefined)?.shiftKey ?? false;
       if (shift) { this.lmb = { mode: 'force', since: this.now }; return; }
       let best: number | undefined; let bd = Infinity;
-      for (const m of this.sim.world.query('monster')) { const d = Math.hypot(m.x - wp.x, m.y - wp.y); if (d < m.r + 14 && d < bd) { bd = d; best = m.id; } }
+      for (const m of this.sim.world.query('monster')) { const v = this.pose(m); const d = Math.hypot(v.x - wp.x, v.y - wp.y); if (d < m.r + 14 && d < bd) { bd = d; best = m.id; } }
       if (best !== undefined) { this.pending.attackTarget = best; this.lmb = { mode: 'attack', since: this.now }; return; }
       this.pending.moveTo = { x: wp.x, y: wp.y }; this.lmb = { mode: 'ground', since: this.now };
       const g = clampToFloor(this.sim.floor, wp.x, wp.y, T); this.marker = { x: g.x, y: g.y, t: 0.6 };
@@ -130,11 +136,23 @@ export class DungeonScene extends Phaser.Scene {
     }
     if (this.inv.open || this.skills.open) { cmd.forceAttack = false; cmd.moveTo = undefined; cmd.attackTarget = undefined; cmd.slots = cmd.slots.map(() => false); cmd.moveX = 0; cmd.moveY = 0; cmd.dodge = false; }
     const prevFloor = this.sim.floorNo;
-    while (this.acc >= BALANCE.FIXED_DT) { this.sim.step(BALANCE.FIXED_DT, cmd); this.acc -= BALANCE.FIXED_DT; }
-    if (this.sim.floorNo !== prevFloor) saveProgress(this.sim.progress);
+    let stepped = false;
+    while (this.acc >= BALANCE.FIXED_DT) {
+      this.capturePrev();
+      this.sim.step(BALANCE.FIXED_DT, cmd);
+      this.acc -= BALANCE.FIXED_DT;
+      stepped = true;
+    }
+    if (this.sim.floorNo !== prevFloor) {
+      this.prevPos.clear(); this.moved.clear(); this.alpha = 1;
+      saveProgress(this.sim.progress);
+    } else {
+      this.alpha = this.acc / BALANCE.FIXED_DT;
+      if (stepped) this.noteMovement();
+    }
     this.saveT += deltaMs / 1000; if (this.saveT > 60) { this.saveT = 0; saveProgress(this.sim.progress); }
     if (this.drawnFloor !== this.sim.floorNo) this.drawMap();
-    this.cameras.main.centerOn(this.sim.player.x, this.sim.player.y);
+    this.focusCamera();
     this.drawEntities();
     this.drawHud(deltaMs / 1000);
   }
@@ -183,12 +201,41 @@ export class DungeonScene extends Phaser.Scene {
     }
   }
 
-  private animFor(e: { id: number; kind: string; x: number; y: number; dash?: unknown; ai?: { state: string } }): AnimName {
+  private animFor(e: { id: number; kind: string; dash?: unknown; ai?: { state: string } }): AnimName {
     if ((this.hurtUntil.get(e.id) ?? 0) > this.now) return 'hurt';
     if (e.kind === 'player' ? this.castUntil > this.now || !!e.dash : e.ai?.state === 'attack') return 'attack';
-    const lp = this.lastPos.get(e.id); const moved = lp ? Math.hypot(e.x - lp.x, e.y - lp.y) > 0.3 : false;
-    this.lastPos.set(e.id, { x: e.x, y: e.y });
-    return moved ? 'walk' : 'idle';
+    return this.moved.has(e.id) ? 'walk' : 'idle';
+  }
+
+  /** Positions before this fixed step. Called inside the step loop so only the last step is interpolated. */
+  private capturePrev(): void {
+    this.prevPos.clear();
+    for (const e of this.sim.world.entities.values()) this.prevPos.set(e.id, { x: e.x, y: e.y });
+  }
+
+  private noteMovement(): void {
+    this.moved.clear();
+    for (const e of this.sim.world.entities.values()) {
+      const p = this.prevPos.get(e.id);
+      if (!p) continue;
+      const dx = e.x - p.x, dy = e.y - p.y;
+      if (dx * dx + dy * dy > 0.09) this.moved.add(e.id);
+    }
+  }
+
+  /** Interpolated, pixel-snapped draw position. */
+  private pose(e: { id: number; x: number; y: number }): { x: number; y: number } {
+    const p = renderPose(this.prevPos.get(e.id), e, this.alpha);
+    return { x: Math.round(p.x), y: Math.round(p.y) };
+  }
+
+  private focusCamera(): void {
+    const v = this.pose(this.sim.player);
+    const cam = this.cameras.main;
+    cam.centerOn(v.x, v.y);
+    // Flooring scroll and sprites separately vibrates by 1px when the viewport size is odd.
+    cam.scrollX = Math.round(cam.scrollX);
+    cam.scrollY = Math.round(cam.scrollY);
   }
 
   private syncSprites(): void {
@@ -200,25 +247,27 @@ export class DungeonScene extends Phaser.Scene {
       if (!spr) { spr = this.add.sprite(e.x, e.y, `${e.speciesId}-walk`).setOrigin(0.5, 0.62); this.sprites.set(e.id, spr); }
       const key = SpriteProvider.animKey(e.speciesId, this.animFor(e), e.rot);
       if (key && spr.anims.currentAnim?.key !== key) spr.play(key, true);
-      spr.setScale(e.isBoss ? 2 : 2).setPosition(e.x, e.y).setDepth(2 + e.y / 100000);
+      const v = this.pose(e);
+      spr.setScale(e.isBoss ? 2 : 2).setPosition(v.x, v.y).setDepth(2 + v.y / 100000);
       const blink = e.kind === 'player' && (e.iframes ?? 0) > 0 && Math.floor(this.sim.time * 20) % 2 === 0;
       spr.setAlpha(blink ? 0.5 : 1);
       if ((this.hurtUntil.get(e.id) ?? 0) - 0.17 > this.now) spr.setTintFill(0xffffff); else if (e.burn) spr.setTint(0xffb080); else spr.clearTint();
     }
-    for (const [id, spr] of this.sprites) if (!seen.has(id)) { spr.destroy(); this.sprites.delete(id); this.lastPos.delete(id); }
+    for (const [id, spr] of this.sprites) if (!seen.has(id)) { spr.destroy(); this.sprites.delete(id); }
   }
 
   private emitFx(): void {
     const s = this.sim; const p = s.player; const live = new Set<number>();
     for (const e of s.world.entities.values()) {
       if (e.dead) continue;
-      if (e.kind === 'projectile') this.fx.projectile(e.x, e.y, e.team === 'enemy');
-      else if (e.kind === 'beam') this.fx.beam(p.x, p.y, p.rot + e.rot, e.len ?? 300, e.width ?? 22);
-      else if (e.kind === 'zone') this.fx.zone(e.x, e.y, e.r);
-      else if (e.kind === 'blast') { live.add(e.id); this.blasts.set(e.id, { x: e.x, y: e.y, r: e.r }); this.fx.telegraph(e.x, e.y, e.r); }
-      else if ((e.kind === 'monster' || e.kind === 'player') && e.burn) this.fx.burnTick(e.x, e.y);
+      const v = this.pose(e);
+      if (e.kind === 'projectile') this.fx.projectile(v.x, v.y, e.team === 'enemy');
+      else if (e.kind === 'beam') { const pv = this.pose(p); this.fx.beam(pv.x, pv.y, p.rot + e.rot, e.len ?? 300, e.width ?? 22); }
+      else if (e.kind === 'zone') this.fx.zone(v.x, v.y, e.r);
+      else if (e.kind === 'blast') { live.add(e.id); this.blasts.set(e.id, { x: v.x, y: v.y, r: e.r }); this.fx.telegraph(v.x, v.y, e.r); }
+      else if ((e.kind === 'monster' || e.kind === 'player') && e.burn) this.fx.burnTick(v.x, v.y);
     }
-    if (p.dash?.moveId) this.fx.dash(p.x, p.y);
+    if (p.dash?.moveId) { const v = this.pose(p); this.fx.dash(v.x, v.y); }
     for (const [id, b] of this.blasts) if (!live.has(id)) { this.fx.explosion(b.x, b.y, b.r); this.cameras.main.shake(160, 0.008); this.blasts.delete(id); }
   }
 
@@ -233,37 +282,38 @@ export class DungeonScene extends Phaser.Scene {
       if (this.marker.t <= 0) this.marker = null;
     }
     if (s.order?.kind === 'move') { g.fillStyle(0x80ff80, 0.35); for (const wp of s.order.path) g.fillCircle(wp.x, wp.y, 2); }
-    if (s.order?.kind === 'attack') { const tg = s.world.get(s.order.target); if (tg && !tg.dead) g.lineStyle(2, 0xff4040, 0.9).strokeEllipse(tg.x, tg.y + tg.r * 0.5, tg.r * 3, tg.r * 1.4); }
+    if (s.order?.kind === 'attack') { const tg = s.world.get(s.order.target); if (tg && !tg.dead) { const v = this.pose(tg); g.lineStyle(2, 0xff4040, 0.9).strokeEllipse(v.x, v.y + tg.r * 0.5, tg.r * 3, tg.r * 1.4); } }
     g.lineStyle(3, s.exitOpen ? 0x40ff80 : 0x555555).strokeCircle((ex.cx + 0.5) * T, (ex.cy + 0.5) * T, T * 0.9);
     for (const e of s.world.entities.values()) {
       if (e.dead) continue;
+      const v = this.pose(e);
       switch (e.kind) {
-        case 'item': g.fillStyle(RARITY_COLOR[e.item?.rarity ?? 'common'] ?? 0xffffff).fillRect(e.x - 6, e.y - 6, 12, 12); g.lineStyle(1, 0x000000).strokeRect(e.x - 6, e.y - 6, 12, 12); break;
-        case 'zone': g.fillStyle(0xff6020, 0.15).fillCircle(e.x, e.y, e.r); g.lineStyle(2, 0xff9040, 0.5).strokeCircle(e.x, e.y, e.r); break;
-        case 'blast': { const k = 1 - (e.life ?? 0) / (e.delay ?? 0.4); g.lineStyle(2, 0xffe060).strokeCircle(e.x, e.y, e.r); g.fillStyle(0xff8020, 0.35).fillCircle(e.x, e.y, e.r * k); break; }
-        case 'beam': { const a = p.rot + e.rot; const len = e.len ?? 300; g.lineStyle(e.width ?? 22, 0xff7020, 0.35).lineBetween(p.x, p.y, p.x + Math.cos(a) * len, p.y + Math.sin(a) * len);
-          g.lineStyle((e.width ?? 22) / 3, 0xffe080, 0.6).lineBetween(p.x, p.y, p.x + Math.cos(a) * len, p.y + Math.sin(a) * len); break; }
-        case 'projectile': g.fillStyle(e.team === 'player' ? 0xfff0b0 : 0x90c8ff).fillCircle(e.x, e.y, e.r * 0.7); break;
+        case 'item': g.fillStyle(RARITY_COLOR[e.item?.rarity ?? 'common'] ?? 0xffffff).fillRect(v.x - 6, v.y - 6, 12, 12); g.lineStyle(1, 0x000000).strokeRect(v.x - 6, v.y - 6, 12, 12); break;
+        case 'zone': g.fillStyle(0xff6020, 0.15).fillCircle(v.x, v.y, e.r); g.lineStyle(2, 0xff9040, 0.5).strokeCircle(v.x, v.y, e.r); break;
+        case 'blast': { const k = 1 - (e.life ?? 0) / (e.delay ?? 0.4); g.lineStyle(2, 0xffe060).strokeCircle(v.x, v.y, e.r); g.fillStyle(0xff8020, 0.35).fillCircle(v.x, v.y, e.r * k); break; }
+        case 'beam': { const a = p.rot + e.rot; const len = e.len ?? 300; const pv = this.pose(p); g.lineStyle(e.width ?? 22, 0xff7020, 0.35).lineBetween(pv.x, pv.y, pv.x + Math.cos(a) * len, pv.y + Math.sin(a) * len);
+          g.lineStyle((e.width ?? 22) / 3, 0xffe080, 0.6).lineBetween(pv.x, pv.y, pv.x + Math.cos(a) * len, pv.y + Math.sin(a) * len); break; }
+        case 'projectile': g.fillStyle(e.team === 'player' ? 0xfff0b0 : 0x90c8ff).fillCircle(v.x, v.y, e.r * 0.7); break;
         case 'monster': {
-          const w = e.r * 2; const frac = Math.max(0, (e.hp ?? 0) / (e.maxHp ?? 1)); const top = this.sprites.has(e.id) ? e.y - e.r - 26 : e.y - e.r - 8;
-          this.bars.fillStyle(0x000000).fillRect(e.x - w / 2, top, w, 4); this.bars.fillStyle(e.isBoss ? 0xff4040 : 0x40e040).fillRect(e.x - w / 2, top, w * frac, 4);
-          g.fillStyle(0x000000, 0.35).fillEllipse(e.x, e.y + e.r * 0.5, e.r * 2, e.r * 0.8);
-          if (this.sprites.has(e.id)) { if (e.ai?.state === 'attack') g.lineStyle(2, 0xff3030, 0.8).strokeEllipse(e.x, e.y + e.r * 0.5, e.r * 2.6, e.r * 1.2); break; }
+          const w = e.r * 2; const frac = Math.max(0, (e.hp ?? 0) / (e.maxHp ?? 1)); const top = this.sprites.has(e.id) ? v.y - e.r - 26 : v.y - e.r - 8;
+          this.bars.fillStyle(0x000000).fillRect(v.x - w / 2, top, w, 4); this.bars.fillStyle(e.isBoss ? 0xff4040 : 0x40e040).fillRect(v.x - w / 2, top, w * frac, 4);
+          g.fillStyle(0x000000, 0.35).fillEllipse(v.x, v.y + e.r * 0.5, e.r * 2, e.r * 0.8);
+          if (this.sprites.has(e.id)) { if (e.ai?.state === 'attack') g.lineStyle(2, 0xff3030, 0.8).strokeEllipse(v.x, v.y + e.r * 0.5, e.r * 2.6, e.r * 1.2); break; }
           const md = monsterData(e.monsterId ?? '');
-          if (e.ai?.state === 'attack') g.lineStyle(2, 0xff3030, 0.8).strokeCircle(e.x, e.y, e.r + 6);
-          g.fillStyle(hex(md.color)).fillCircle(e.x, e.y, e.r);
-          g.fillStyle(0xffffff).fillCircle(e.x + Math.cos(e.rot) * e.r * 0.6, e.y + Math.sin(e.rot) * e.r * 0.6, 3);
-          if (e.burn) g.lineStyle(2, 0xff5010).strokeCircle(e.x, e.y, e.r + 2);
+          if (e.ai?.state === 'attack') g.lineStyle(2, 0xff3030, 0.8).strokeCircle(v.x, v.y, e.r + 6);
+          g.fillStyle(hex(md.color)).fillCircle(v.x, v.y, e.r);
+          g.fillStyle(0xffffff).fillCircle(v.x + Math.cos(e.rot) * e.r * 0.6, v.y + Math.sin(e.rot) * e.r * 0.6, 3);
+          if (e.burn) g.lineStyle(2, 0xff5010).strokeCircle(v.x, v.y, e.r + 2);
           break;
         }
         case 'player': {
           if (e.dead) break;
-          g.fillStyle(0x000000, 0.35).fillEllipse(e.x, e.y + 7, 24, 9);
+          g.fillStyle(0x000000, 0.35).fillEllipse(v.x, v.y + 7, 24, 9);
           if (this.sprites.has(e.id)) break;
           const blink = (e.iframes ?? 0) > 0 && Math.floor(s.time * 20) % 2 === 0;
-          g.fillStyle(SPECIES_COLOR[e.speciesId ?? ''] ?? 0xf08030, blink ? 0.4 : 1).fillCircle(e.x, e.y, e.r);
-          g.fillStyle(0xffd040).fillCircle(e.x - Math.cos(e.rot) * e.r, e.y - Math.sin(e.rot) * e.r, 5); // tail flame
-          g.fillStyle(0xffffff).fillCircle(e.x + Math.cos(e.rot) * e.r * 0.6, e.y + Math.sin(e.rot) * e.r * 0.6, 3);
+          g.fillStyle(SPECIES_COLOR[e.speciesId ?? ''] ?? 0xf08030, blink ? 0.4 : 1).fillCircle(v.x, v.y, e.r);
+          g.fillStyle(0xffd040).fillCircle(v.x - Math.cos(e.rot) * e.r, v.y - Math.sin(e.rot) * e.r, 5); // tail flame
+          g.fillStyle(0xffffff).fillCircle(v.x + Math.cos(e.rot) * e.r * 0.6, v.y + Math.sin(e.rot) * e.r * 0.6, 3);
           break;
         }
       }

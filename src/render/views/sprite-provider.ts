@@ -25,7 +25,9 @@ export class SpriteProvider {
     const m = SpriteProvider.manifest; if (!m) return;
     for (const [sp, e] of Object.entries(m.species)) for (const [a, d] of Object.entries(e.anims)) {
       const key = `${sp}-${a}`; if (!scene.textures.exists(key)) continue;
-      const src = scene.textures.get(key).getSourceImage();
+      const tex = scene.textures.get(key);
+      tex.setFilter(Phaser.Textures.FilterMode.NEAREST);
+      const src = tex.getSourceImage();
       const cols = Math.max(1, Math.floor(src.width / d.frameWidth)); const rows = Math.max(1, Math.floor(src.height / d.frameHeight));
       SpriteProvider.rows.set(key, rows);
       const frameMs = d.durations.length ? (d.durations.reduce((x, y) => x + y, 0) / d.durations.length) * (1000 / 60) : 120;

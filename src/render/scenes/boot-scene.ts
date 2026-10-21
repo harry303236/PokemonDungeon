@@ -12,6 +12,7 @@ export class BootScene extends Phaser.Scene {
   create(): void {
     this.makeFxTextures();
     SpriteProvider.tiles = this.textures.exists(TILESET_KEY);
+    if (SpriteProvider.tiles) this.textures.get(TILESET_KEY).setFilter(Phaser.Textures.FilterMode.NEAREST);
     let m: SkinManifest | undefined;
     try { m = JSON.parse(String(this.cache.text.get('skin-manifest') ?? '')) as SkinManifest; } catch { console.info('[skin] no skin manifest; using placeholders'); }
     if (!m?.species) { this.scene.start('title'); return; }

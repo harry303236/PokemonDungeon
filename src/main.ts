@@ -5,6 +5,8 @@ import { DungeonScene } from './render/scenes/dungeon-scene';
 
 new Phaser.Game({
   type: Phaser.AUTO, parent: 'game', backgroundColor: '#0d0b10',
+  pixelArt: true,
+  render: { pixelArt: true, antialias: false, roundPixels: true },
   scale: { mode: Phaser.Scale.RESIZE, width: 1280, height: 720 },
   scene: [BootScene, TitleScene, DungeonScene],
 });
