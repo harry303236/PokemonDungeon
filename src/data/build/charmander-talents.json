@@ -311,7 +311,8 @@
         "claw_t3_1"
       ],
       "exclusiveGroup": "keystone",
-      "uiPin": "top"
+      "uiPin": "top",
+      "drawback": "加成要靠失去生命，血量低時很危險"
     },
     {
       "id": "wing_t1_0",

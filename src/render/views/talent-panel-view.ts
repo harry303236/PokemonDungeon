@@ -58,7 +58,7 @@ export class TalentPanelView {
       const ring = refund ? 'border:2px dashed #ff6a5a;box-shadow:0 0 12px 3px rgba(255,90,70,.65);animation:tpPulse 1s ease-in-out infinite alternate;' : state === 'on' ? `box-shadow:0 0 14px 4px rgba(255,140,30,.85), inset 0 0 10px rgba(255,160,40,.6);border:2px solid #ffb040;`
         : state === 'plan' ? 'border:2px dashed #7fd8ff;box-shadow:0 0 12px 3px rgba(110,200,255,.6);animation:tpPulse 1s ease-in-out infinite alternate;' : '';
       const grey = state === 'off' ? 'filter:grayscale(1) brightness(.6);' : '';
-      const rank = k === 'root' || k === 'keystone' && n.maxRank === 1 ? '' : `<div style="position:absolute;left:${p.x + s / 2 - 6}px;top:${p.y + s / 2 - 12}px;font:bold 12px sans-serif;color:${r ? '#ffd27a' : '#998'};text-shadow:0 0 3px #000,0 0 3px #000">${r}/${n.maxRank}</div>`;
+      const rank = k === 'root' || k === 'keystone' && n.maxRank === 1 ? '' : `<div style="position:absolute;left:${p.x + s / 2 - 10}px;top:${p.y + s / 2 - 12}px;font:bold 14px sans-serif;color:${r ? '#ffe2a0' : '#d8d0c4'};background:rgba(8,5,3,.82);border:1px solid ${r ? '#a0702a' : '#4a4038'};border-radius:8px;padding:0 5px;line-height:17px;text-shadow:0 0 2px #000">${r}/${n.maxRank}</div>`;
       return `<div data-node="${n.id}" style="position:absolute;left:${p.x - s / 2}px;top:${p.y - s / 2}px;width:${s}px;height:${s}px;cursor:pointer">
         <div style="position:absolute;left:${(s - icon) / 2}px;top:${(s - icon) / 2}px;width:${icon}px;height:${icon}px;border-radius:50%;${ring}"></div>
         <img src="${ART}icons/talent-${n.id}.png" onerror="this.onerror=null;this.src='${ART}icons/talent-root.png';this.style.opacity='.35'" style="position:absolute;left:${(s - icon) / 2}px;top:${(s - icon) / 2}px;width:${icon}px;height:${icon}px;border-radius:50%;${grey}" draggable="false">
@@ -68,9 +68,9 @@ export class TalentPanelView {
     const tip = (): string => {
       const n = nodes.find((x) => x.id === this.hover); if (!n) return '';
       const p = pos.get(n.id)!; const k = nodeKind(n); const { title, desc } = splitName(n); const eff = effectLine(n, m[n.id] ?? 0);
-      const sl = statusLine(TALENTS, a, this.pend, n, ctx); const col = { ok: '#7fe07f', plan: '#7fd8ff', bad: '#ff7a6a', hint: '#ccc' }[sl.tone];
-      const left = p.x + 190 + 340 > W ? p.x - 380 : p.x + 50; const top = Math.max(50, Math.min(H - 260, p.y - 70));
-      return `<div id="tp-tip" style="position:absolute;left:${left}px;top:${top}px;width:330px;box-sizing:border-box;padding:26px 30px 22px;pointer-events:none;
+      const sl = statusLine(TALENTS, a, this.pend, n, ctx); const col = { ok: '#7fe07f', plan: '#7fd8ff', bad: '#9a948c', hint: '#ccc' }[sl.tone];
+      void p;
+      return `<div id="tp-tip" style="position:absolute;left:-9999px;top:0;opacity:.9;width:330px;box-sizing:border-box;padding:26px 30px 22px;pointer-events:none;
         border:44px solid transparent;border-image:url(${ART}talent-frame-tooltip.png) 90 fill / 44px stretch;margin:-44px">
         <div style="text-align:center;color:#ffc75a;font-size:17px;font-weight:bold">${title}</div>
         <div style="text-align:center;color:#a99;font-size:11px;margin:2px 0 8px">${KIND_LABEL[k]}${n.branch !== 'core' ? ` · ${n.branch}` : ''}</div>
@@ -104,12 +104,24 @@ export class TalentPanelView {
       d.addEventListener('mouseenter', () => { this.hover = id; this.renderTip(); });
       d.addEventListener('mouseleave', () => { if (this.hover === id) { this.hover = null; this.renderTip(); } });
     });
+    this.el.onmousemove = (ev) => { const b = this.el.getBoundingClientRect(); this.mx = ev.clientX - b.left; this.my = ev.clientY - b.top; if (this.hover) this.placeTip(); };
+    this.placeTip();
     this.el.querySelector('#tp-ok')?.addEventListener('click', () => this.confirm());
     this.el.querySelector('#tp-cancel')?.addEventListener('click', () => { this.pend = {}; this.msg = ''; this.render(); });
     this.el.querySelector('#tp-reset')?.addEventListener('click', () => { this.pend = {}; const r = b.fullReset(); this.msg = r.ok ? '' : `無法：${r.reason}`; this.sim().refreshBuild(); this.onChange(); this.render(); });
   }
   private tipFn: () => string = () => '';
-  private renderTip(): void { const w = this.el.querySelector('#tp-tipwrap'); if (w) w.innerHTML = this.tipFn(); }
+  private mx = 0; private my = 0;
+  private renderTip(): void { const w = this.el.querySelector('#tp-tipwrap'); if (w) { w.innerHTML = this.tipFn(); this.placeTip(); } }
+  /** Follow cursor with an offset; flip at edges; prefer staying below the branch titles (y >= 84). */
+  private placeTip(): void {
+    const t = this.el.querySelector<HTMLDivElement>('#tp-tip'); if (!t) return;
+    const tw = t.offsetWidth, th = t.offsetHeight, OFF = 18; // visual box = offset box shifted by the -44px margin
+    let x = this.mx + OFF; if (x + tw > W - 8) x = this.mx - OFF - tw;
+    let y = this.my + OFF; if (y + th > H - 8) y = this.my - OFF - th;
+    y = Math.max(th + 84 < this.my - OFF ? 84 : 8, Math.min(H - 8 - th, y)); x = Math.max(8, x);
+    t.style.left = `${x + 44}px`; t.style.top = `${y + 44}px`;
+  }
   /** Apply staged refunds (paying ash shards) then staged allocations in data (topological) order. */
   confirm(): void {
     const sim = this.sim(); const b = sim.build; const cost = planCost(this.pend, sim.progress.level >= RESPEC_FREE_BEFORE());

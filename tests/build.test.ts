@@ -327,6 +327,6 @@ describe('talent plan/confirm + tooltip lines', () => {
   it('effect line shows current and next rank; keystone has drawback field', () => {
     const n = N('claw_t1_0'); const v = n.value as number;
     expect(effectLine(n, 1)).toContain(`目前 +${v}`); expect(effectLine(n, 1)).toContain(`下一級 +${v * 2}`);
-    expect(N('ks_solarPower').drawback).toBeTruthy();
+    expect(N('ks_solarPower').drawback).toBeTruthy(); expect(N('ks_blaze').drawback).toBe('加成要靠失去生命，血量低時很危險'); expect(N('ks_skyGlide').drawback).toBeUndefined();
   });
 });
