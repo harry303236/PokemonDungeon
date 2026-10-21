@@ -356,7 +356,8 @@ export class DungeonScene extends Phaser.Scene {
   private focusCamera(): void {
     const v = this.pose(this.sim.player);
     const cam = this.cameras.main;
-    cam.centerOn(v.x, v.y);
+    // centre the player in the visible area above the bottom HUD (offset = half the HUD's covered height; scales with resolution)
+    cam.centerOn(v.x, v.y + this.hudBar.occupied / 2);
     // Flooring scroll and sprites separately vibrates by 1px when the viewport size is odd.
     cam.scrollX = Math.round(cam.scrollX);
     cam.scrollY = Math.round(cam.scrollY);

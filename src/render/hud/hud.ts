@@ -73,6 +73,8 @@ export class Hud {
   private flashes = [0, 0, 0, 0, 0, 0, 0];
   private ppFlash = 0;
   rects: SlotRect[] = [];
+  /** Screen px covered by the bottom bar (from the top of the slot row to the bottom edge); camera uses it to centre the player above the HUD. */
+  occupied = 0;
   bounds = new Phaser.Geom.Rectangle();
   dragFrom: number | null = null;
 
@@ -155,6 +157,7 @@ export class Hud {
       const fl = this.flashes[i] ?? 0;
       if (fl > 0) { this.fx.fillStyle(0xff7a20, 0.55 * fl).fillRect(x - inner / 2 - 4, y - inner / 2 - 4, inner + 8, inner + 8); this.fx.fillStyle(0xffd080, 0.35 * fl).fillCircle(x, y, inner * 0.6); }
     }
+    this.occupied = this.rects.length ? H - Math.min(...this.rects.map((r) => r.y)) + 6 * k : 0;
     // XP bar (fill cropped by ratio; frame = bar-base groove or fallback xp frame)
     const xpY = base ? baseCY + (bb.xp.y - bb.h / 2) * b : H - 18 * k;
     const innerW = base ? (bb.xp.x1 - bb.xp.x0) * b : (right - left) * 0.98 * 0.84;
