@@ -1,0 +1,274 @@
+{
+ "modifierOrder": [
+  "variant",
+  "projectileShape(multi,fork)",
+  "preHit(pierce)",
+  "onHit(chain,ignite,delayed)",
+  "reaction",
+  "statScaling"
+ ],
+ "moves": [
+  {
+   "id": "ember",
+   "name": "火花",
+   "tags": [
+    "projectile",
+    "fire",
+    "basic"
+   ],
+   "variants": [
+    {
+     "id": "ember_volley",
+     "name": "連珠",
+     "effect": "一次射出3發",
+     "addTags": [],
+     "rules": [
+      "多重投射時改為更多發但散布角變大（不疊加成5發直線）",
+      "延遲爆發時，黏附的火花被其他火招命中會提前引爆"
+     ]
+    },
+    {
+     "id": "ember_seed",
+     "name": "火種",
+     "effect": "命中後在地面留下火種(6秒)，可被引爆",
+     "addTags": [
+      "seed"
+     ],
+     "rules": [
+      "引爆流核心"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "flamethrower",
+   "name": "噴射火焰",
+   "tags": [
+    "beam",
+    "fire",
+    "channel"
+   ],
+   "variants": [
+    {
+     "id": "ft_focus",
+     "name": "凝聚",
+     "effect": "單發穿透光束",
+     "addTags": [
+      "projectile"
+     ],
+     "rules": [
+      "插連鎖時每跳一次傷害-20%"
+     ]
+    },
+    {
+     "id": "ft_spread",
+     "name": "擴散",
+     "effect": "扇形短程火焰，並在地面留下燃燒地面3秒",
+     "addTags": [
+      "area",
+      "ground"
+     ],
+     "rules": [
+      "取代原熔流，成為鋪燃燒的第二來源",
+      "插分裂時火焰碰到牆或障礙會反彈一次"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "fire_spin",
+   "name": "火焰旋渦",
+   "tags": [
+    "area",
+    "fire",
+    "duration"
+   ],
+   "variants": [
+    {
+     "id": "fs_prison",
+     "name": "火牢",
+     "effect": "困住範圍內敵人2秒",
+     "addTags": [
+      "control"
+     ],
+     "rules": [
+      "對免控敵人（Boss）改為：範圍內敵人受到火傷+20%"
+     ]
+    },
+    {
+     "id": "fs_tornado",
+     "name": "火龍捲",
+     "effect": "火環跟隨自身移動",
+     "addTags": [
+      "aura"
+     ],
+     "rules": []
+    }
+   ]
+  },
+  {
+   "id": "fire_blast",
+   "name": "大字爆炎",
+   "tags": [
+    "area",
+    "fire",
+    "nuke"
+   ],
+   "variants": [
+    {
+     "id": "fb_meteor",
+     "name": "隕星",
+     "effect": "1秒後落下，傷害+60%",
+     "addTags": [
+      "delayed"
+     ],
+     "rules": [
+      "與延遲爆發互斥（不可插）"
+     ]
+    },
+    {
+     "id": "fb_star",
+     "name": "五芒",
+     "effect": "炸成五道向外火柱",
+     "addTags": [
+      "projectile"
+     ],
+     "rules": []
+    }
+   ]
+  },
+  {
+   "id": "flame_charge",
+   "name": "閃焰衝鋒",
+   "tags": [
+    "movement",
+    "melee",
+    "fire"
+   ],
+   "variants": [
+    {
+     "id": "fc_comet",
+     "name": "彗星",
+     "effect": "穿過敵人並留下火路",
+     "addTags": [
+      "ground"
+     ],
+     "rules": []
+    },
+    {
+     "id": "fc_ram",
+     "name": "鐵頭",
+     "effect": "將周圍敵人往落點聚攏後暈眩0.8秒",
+     "addTags": [
+      "control"
+     ],
+     "rules": [
+      "不擊退，近戰流用"
+     ]
+    }
+   ]
+  }
+ ],
+ "supportGems": [
+  {
+   "id": "multi",
+   "name": "多重投射",
+   "requiresTags": [
+    "projectile"
+   ],
+   "effect": "+2投射物，單發傷害-25%"
+  },
+  {
+   "id": "pierce",
+   "name": "穿透",
+   "requiresTags": [
+    "projectile"
+   ],
+   "effect": "穿透2個敵人"
+  },
+  {
+   "id": "chain",
+   "name": "連鎖",
+   "requiresTags": [
+    "projectile",
+    "beam"
+   ],
+   "effect": "命中後跳躍2次"
+  },
+  {
+   "id": "fork",
+   "name": "分裂",
+   "requiresTags": [
+    "projectile",
+    "beam"
+   ],
+   "effect": "命中後分成3道斜射"
+  },
+  {
+   "id": "delayed",
+   "name": "延遲爆發",
+   "requiresTags": [
+    "projectile",
+    "area"
+   ],
+   "excludesTags": [
+    "delayed"
+   ],
+   "effect": "命中處留下印記，1秒後爆炸"
+  },
+  {
+   "id": "aoe",
+   "name": "範圍擴大",
+   "requiresTags": [
+    "area"
+   ],
+   "effect": "範圍+30%"
+  },
+  {
+   "id": "ignite",
+   "name": "命中引燃",
+   "requiresTags": [
+    "fire"
+   ],
+   "effect": "命中25%機率燃燒"
+  },
+  {
+   "id": "energy_on_kill",
+   "name": "擊殺回能",
+   "requiresTags": [],
+   "effect": "擊殺回復3 PP能量"
+  }
+ ],
+ "reactions": [
+  {
+   "id": "seed_detonate",
+   "trigger": "火招命中火種",
+   "effect": "火種爆炸並連鎖引爆3格內其他火種"
+  },
+  {
+   "id": "burn_consume",
+   "trigger": "凝聚或五芒命中燃燒中的敵人",
+   "effect": "消耗燃燒，立即結算剩餘燃燒傷害×1.5"
+  },
+  {
+   "id": "sticky_early",
+   "trigger": "火招命中黏附的延遲火花",
+   "effect": "提前引爆"
+  },
+  {
+   "id": "charge_through_spin",
+   "trigger": "閃焰衝鋒穿過火焰旋渦",
+   "effect": "帶著火環一起衝出"
+  },
+  {
+   "id": "sun_chain",
+   "trigger": "大晴天時連鎖跳躍",
+   "effect": "每跳一次傷害+10%（抵銷凝聚的-20%）"
+  },
+  {
+   "id": "ground_sun",
+   "trigger": "大晴天時燃燒地面",
+   "effect": "持續時間加倍，變成火海"
+  }
+ ]
+}

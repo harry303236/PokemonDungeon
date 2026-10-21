@@ -1,23 +1,73 @@
 import talentJson from '../../data/build/charmander-talents.json';
-import gemsJson from '../../data/build/gems.json';
+import directorJson from '../../data/build/charmander-moves-gems.json';
+import bindingsJson from '../../data/build/director-bindings.json';
 import tagsJson from '../../data/build/move-tags.json';
-import upgradesJson from '../../data/build/skill-upgrades.json';
 import reactionsJson from '../../data/build/reactions.json';
-import { opsModifier, warnOnce, compatible, type Modifier, type OpsDef, type StatusApply } from './pipeline';
+import { opsModifier, warnOnce, compatible, STAGES, type Modifier, type Op, type OpsDef, type Stage, type StatusApply } from './pipeline';
 import { canAllocate, canRefund, pointsSpent, pointsTotal, talentBonuses, validateTalentData, type Alloc, type PlayerBonuses, type TalentData } from './talents';
 
 export const TALENTS = talentJson as unknown as TalentData;
 for (const e of validateTalentData(TALENTS)) console.warn(`[talents] ${e}`);
-export interface GemDef extends OpsDef { name: string; desc: string }
-export const GEMS: Record<string, GemDef> = Object.fromEntries((gemsJson as unknown as GemDef[]).map((g) => [g.id, g]));
+
+// ---------- director content (moves x variants, support gems, reactions) + engine bindings ----------
+export interface DirectorData {
+  modifierOrder: string[];
+  moves: { id: string; name: string; tags: string[]; variants: { id: string; name: string; effect: string; addTags: string[]; rules: string[] }[] }[];
+  supportGems: { id: string; name: string; requiresTags: string[]; excludesTags?: string[]; effect: string }[];
+  reactions: { id: string; trigger: string; effect: string }[];
+}
+interface Bindings {
+  moveIdMap: Record<string, string>; stageMap: Record<string, string>;
+  variants: Record<string, { vfx?: string; ops: Op[] }>;
+  gems: Record<string, { stage: Stage; icon?: string; ops: Op[] }>;
+  reactions: Record<string, Omit<ReactionRule, 'id' | 'name' | 'desc' | 'stub'>>;
+}
+export const DIRECTOR = directorJson as unknown as DirectorData;
+const BIND = bindingsJson as unknown as Bindings;
+export const engineMoveId = (directorId: string): string => BIND.moveIdMap[directorId] ?? directorId;
+
+/** Validate director file against bindings + engine; returns problems (warned at load). */
+export function validateDirector(d: DirectorData = DIRECTOR, b: Bindings = BIND): string[] {
+  const errs: string[] = [];
+  const order = d.modifierOrder.map((x) => b.stageMap[x.split('(')[0] ?? ''] ?? '?');
+  if (order.join() !== STAGES.join()) errs.push(`modifierOrder ${d.modifierOrder.join(' > ')} does not map to engine STAGES ${STAGES.join(' > ')}`);
+  const vIds = new Set<string>();
+  for (const m of d.moves) for (const v of m.variants) { if (vIds.has(v.id)) errs.push(`duplicate variant ${v.id}`); vIds.add(v.id); if (!b.variants[v.id]) errs.push(`variant ${v.id}: no engine binding (stub)`); }
+  for (const g of d.supportGems) if (!b.gems[g.id]) errs.push(`gem ${g.id}: no engine binding (stub)`);
+  for (const r of d.reactions) if (!b.reactions[r.id]) errs.push(`reaction ${r.id}: no engine binding (stub)`);
+  for (const k of Object.keys(b.variants)) if (!vIds.has(k)) errs.push(`binding for unknown variant ${k}`);
+  return errs;
+}
+for (const e of validateDirector()) console.warn(`[director] ${e}`);
+
+export interface GemDef extends OpsDef { name: string; desc: string; icon?: string; stub: boolean }
+export const GEMS: Record<string, GemDef> = Object.fromEntries(DIRECTOR.supportGems.map((g) => {
+  const b = BIND.gems[g.id];
+  return [g.id, { id: g.id, name: g.name, desc: g.effect, icon: b?.icon, stub: !b, stage: b?.stage ?? 'onhit', ops: b?.ops ?? [],
+    tagsAny: g.requiresTags.length ? g.requiresTags : undefined, tagsNone: g.excludesTags } satisfies GemDef];
+}));
 export interface MoveTagDef { tags: string[]; applies?: StatusApply[] }
-export const MOVE_TAGS = tagsJson as unknown as Record<string, MoveTagDef>;
-export interface UpgradeOption extends OpsDef { name: string; desc: string }
+const LOCAL_TAGS = tagsJson as unknown as Record<string, MoveTagDef>;
+export const MOVE_TAGS: Record<string, MoveTagDef> = { ...LOCAL_TAGS, ...Object.fromEntries(DIRECTOR.moves.map((m) => [engineMoveId(m.id), { ...LOCAL_TAGS[engineMoveId(m.id)], tags: m.tags }])) };
+export interface UpgradeOption extends OpsDef { name: string; desc: string; rules: string[]; vfx?: string; stub: boolean }
 export interface UpgradeGroup { group: string; options: UpgradeOption[] }
-export const SKILL_UPGRADES: Record<string, UpgradeGroup[]> = Object.fromEntries(Object.entries(upgradesJson as Record<string, unknown>).filter(([k]) => !k.startsWith('_')) as [string, UpgradeGroup[]][]);
-export interface ReactionRule { id: string; name: string; trigger: { tagsAll?: string[]; tagsAny?: string[] }; requires: string; consume: boolean; effect: { type: string; r: number; mult: number } }
-export const STATUSES = (reactionsJson as { statuses: Record<string, { name: string; maxStacks: number; duration: number }> }).statuses;
-export const REACTIONS = (reactionsJson as unknown as { reactions: ReactionRule[] }).reactions;
+/** D4-style per-skill upgrades: the director's 2-choice variants are the 'variant' group; more groups can be added in data. */
+export const SKILL_UPGRADES: Record<string, UpgradeGroup[]> = Object.fromEntries(DIRECTOR.moves.map((m) => [engineMoveId(m.id), [{ group: 'variant', options: m.variants.map((v) => {
+  const b = BIND.variants[v.id];
+  const ops: Op[] = [...v.addTags.map((t): Op => ({ op: 'addTag', value: t })), ...(b?.ops ?? [])];
+  return { id: v.id, name: v.name, desc: v.effect, rules: v.rules, vfx: b?.vfx, stub: !b, stage: 'variant' as Stage, ops };
+}) }]]));
+export interface ReactionRule { id: string; name: string; desc: string; stub: boolean; hook: 'hit' | 'dash' | 'chain' | 'ground'; trigger: { tagsAll?: string[]; tagsAny?: string[]; variantAny?: string[]; moveAny?: string[] }; requires: string; effect: { type: string; [k: string]: number | string }; vfx?: string }
+export const STATUSES = (reactionsJson as unknown as { statuses: Record<string, { name: string; maxStacks: number; duration: number }> }).statuses;
+export const REACTIONS: ReactionRule[] = DIRECTOR.reactions.map((r) => { const b = BIND.reactions[r.id];
+  return { id: r.id, name: r.trigger, desc: r.effect, stub: !b, hook: b?.hook ?? 'hit', trigger: b?.trigger ?? {}, requires: b?.requires ?? 'never', effect: b?.effect ?? { type: 'none' }, vfx: b?.vfx }; });
+export const reactionsFor = (hook: ReactionRule['hook']): ReactionRule[] => REACTIONS.filter((r) => !r.stub && r.hook === hook);
+export function triggerMatches(t: ReactionRule['trigger'], tags: Set<string>, moveId: string, variant: string | null): boolean {
+  if (t.variantAny && !(variant && t.variantAny.includes(variant))) return false;
+  if (t.moveAny && !t.moveAny.includes(moveId)) return false;
+  return compatible({ tagsAll: t.tagsAll, tagsAny: t.tagsAny }, tags, moveId);
+}
+export const variantVfx = (variant: string | null | undefined): string | undefined => (variant ? BIND.variants[variant]?.vfx : undefined);
 
 /** Tags for a move: data, else derived from shape so new moves work without a tag entry. */
 export function moveTags(id: string, shape?: string, type?: string): string[] {

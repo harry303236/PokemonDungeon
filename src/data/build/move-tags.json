@@ -1,7 +1,42 @@
 {
-  "ember":        { "tags": ["projectile", "fire", "spell", "basic"], "applies": [{ "status": "ember-seed", "chance": 1, "duration": 5 }] },
-  "flamethrower": { "tags": ["beam", "fire", "spell", "channel"] },
-  "fire-spin":    { "tags": ["area", "zone", "fire", "spell", "duration"] },
-  "fire-blast":   { "tags": ["area", "fire", "spell"] },
-  "flare-blitz":  { "tags": ["melee", "movement", "fire", "physical"] }
+ "ember": {
+  "tags": [
+   "projectile",
+   "fire",
+   "spell",
+   "basic"
+  ]
+ },
+ "flamethrower": {
+  "tags": [
+   "beam",
+   "fire",
+   "spell",
+   "channel"
+  ]
+ },
+ "fire-spin": {
+  "tags": [
+   "area",
+   "zone",
+   "fire",
+   "spell",
+   "duration"
+  ]
+ },
+ "fire-blast": {
+  "tags": [
+   "area",
+   "fire",
+   "spell"
+  ]
+ },
+ "flare-blitz": {
+  "tags": [
+   "melee",
+   "movement",
+   "fire",
+   "physical"
+  ]
+ }
 }

@@ -31,6 +31,8 @@ export interface MoveSpec {
   widenOverLife: number;
   endExplosion: { r: number; mult: number } | null;
   leech: number;
+  /** open-ended numeric flags consumed by sim handlers (seedGround, prison, starBolts, delayedMark, energyOnKill, ...) */
+  flags: Record<string, number>;
 }
 
 export interface Modifier {
@@ -42,7 +44,7 @@ export interface Modifier {
 export function baseSpec(moveId: string, tags: string[], params: Record<string, number>, burnChance: number, applies: StatusApply[] = []): MoveSpec {
   return { moveId, tags: new Set(tags), variant: null, params: { ...params }, projectiles: 1, spreadDeg: 15, fork: 0, beams: 1, beamSpreadDeg: 25,
     pierce: 0, chain: 0, chainRange: 180, burnChance, applies: applies.map((a) => ({ ...a })), reactionsOff: new Set(), areaPct: 0, incDmgPct: 0, moreDmg: 1,
-    widenOverLife: 0, endExplosion: null, leech: 0 };
+    widenOverLife: 0, endExplosion: null, leech: 0, flags: {} };
 }
 
 export function compatible(m: Pick<Modifier, 'tagsAny' | 'tagsAll' | 'tagsNone' | 'moveId'>, tags: Set<string>, moveId: string): boolean {
@@ -77,13 +79,14 @@ export type Op =
   | { op: 'addTag' | 'removeTag'; value: string }
   | { op: 'param'; key: string; mul?: number; add?: number }
   | { op: 'applyStatus'; status: string; chance: number; duration: number }
-  | { op: 'disableReaction'; value: string };
+  | { op: 'disableReaction'; value: string }
+  | { op: 'flag'; key: string; value: number };
 
 const warned = new Set<string>();
 export const warnOnce = (msg: string): void => { if (warned.has(msg)) return; warned.add(msg); console.warn(msg); };
 
 const NUM_FIELDS = new Set(['projectiles', 'spreadDeg', 'fork', 'beams', 'beamSpreadDeg', 'pierce', 'chain', 'chainRange', 'burnChance', 'areaPct', 'incDmgPct', 'moreDmg', 'widenOverLife', 'leech']);
-const SET_FIELDS = new Set(['endExplosion', 'widenOverLife', 'variant']);
+const SET_FIELDS = new Set(['endExplosion', 'widenOverLife', 'variant', 'spreadDeg', 'beamSpreadDeg']);
 
 export function applyOp(spec: MoveSpec, op: Op, source: string): void {
   const rec = spec as unknown as Record<string, unknown>;
@@ -97,6 +100,7 @@ export function applyOp(spec: MoveSpec, op: Op, source: string): void {
     case 'param': { const v = spec.params[op.key]; if (v === undefined) return; spec.params[op.key] = v * (op.mul ?? 1) + (op.add ?? 0); return; }
     case 'applyStatus': spec.applies.push({ status: op.status, chance: op.chance, duration: op.duration }); return;
     case 'disableReaction': spec.reactionsOff.add(op.value); return;
+    case 'flag': spec.flags[op.key] = (spec.flags[op.key] ?? 0) + op.value; return;
     default: warnOnce(`[build] ${source}: unknown op ${JSON.stringify(op)}`);
   }
 }

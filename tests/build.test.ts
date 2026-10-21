@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
-import { TALENTS, GEMS, Build, newBuildSave, gemFits, moveTags } from '../src/core/build/build';
+import { TALENTS, GEMS, Build, newBuildSave, gemFits, moveTags, DIRECTOR, REACTIONS, validateDirector, engineMoveId } from '../src/core/build/build';
 import { validateTalentData, canAllocate, talentBonuses, unhandledEffectTypes, type TalentData } from '../src/core/build/talents';
-import { baseSpec, buildMoveSpec, opsModifier, STAGES, type Modifier } from '../src/core/build/pipeline';
+import { baseSpec, buildMoveSpec, opsModifier, compatible, STAGES, type Modifier } from '../src/core/build/pipeline';
 import { Sim, newProgress } from '../src/core/sim';
 import { newChain } from '../src/core/events/event-bus';
 
@@ -77,7 +77,7 @@ describe('modifier pipeline', () => {
     expect(s.areaPct).toBe(30); expect(s.variant).toBe('ft-burst'); expect(s.params.duration).toBeCloseTo(0.4);
   });
   it('gems compose: multiple projectiles + pierce + chain + fork', () => {
-    const mods = ['gem-multi', 'gem-pierce', 'gem-chain', 'gem-fork'].map((g) => opsModifier(GEMS[g]!));
+    const mods = ['multi', 'pierce', 'chain', 'fork'].map((g) => opsModifier(GEMS[g]!));
     const s = buildMoveSpec(baseSpec('ember', moveTags('ember'), {}, 0.1), mods).spec;
     expect([s.projectiles, s.pierce, s.chain, s.fork]).toEqual([3, 2, 2, 1]);
     expect(s.moreDmg).toBeCloseTo(0.75);
@@ -86,24 +86,24 @@ describe('modifier pipeline', () => {
 
 describe('support gems', () => {
   it('compatibility by tags', () => {
-    expect(gemFits('gem-pierce', 'ember', moveTags('ember'))).toBe(true);
-    expect(gemFits('gem-pierce', 'fire-blast', moveTags('fire-blast'))).toBe(false);
-    expect(gemFits('gem-aoe', 'fire-spin', moveTags('fire-spin'))).toBe(true);
-    expect(gemFits('gem-aoe', 'flamethrower', moveTags('flamethrower'))).toBe(true);
-    expect(gemFits('gem-aoe', 'ember', moveTags('ember'))).toBe(false);
-    expect(gemFits('gem-burning', 'flare-blitz', moveTags('flare-blitz'))).toBe(true);
+    expect(gemFits('pierce', 'ember', moveTags('ember'))).toBe(true);
+    expect(gemFits('pierce', 'fire-blast', moveTags('fire-blast'))).toBe(false);
+    expect(gemFits('aoe', 'fire-spin', moveTags('fire-spin'))).toBe(true);
+    expect(gemFits('aoe', 'flamethrower', moveTags('flamethrower'))).toBe(false); // director: aoe requires 'area' only
+    expect(gemFits('aoe', 'ember', moveTags('ember'))).toBe(false);
+    expect(gemFits('ignite', 'flare-blitz', moveTags('flare-blitz'))).toBe(true);
   });
   it('socket count follows evo stage; incompatible gems refused', () => {
-    const { b, s, ctx } = mkBuild(10, 1); s.gems = ['gem-pierce', 'gem-chain', 'gem-aoe'];
+    const { b, s, ctx } = mkBuild(10, 1); s.gems = ['pierce', 'chain', 'aoe'];
     expect(b.sockets('ember').length).toBe(1); ctx.evoStage1 = 3; expect(b.sockets('ember').length).toBe(3);
-    expect(b.socket('ember', 0, 'gem-aoe', moveTags('ember')).reason).toBe('incompatible');
-    expect(b.socket('ember', 0, 'gem-pierce', moveTags('ember')).ok).toBe(true);
-    expect(s.gems).not.toContain('gem-pierce');
-    b.unsocket('ember', 0); expect(s.gems).toContain('gem-pierce');
+    expect(b.socket('ember', 0, 'aoe', moveTags('ember')).reason).toBe('incompatible');
+    expect(b.socket('ember', 0, 'pierce', moveTags('ember')).ok).toBe(true);
+    expect(s.gems).not.toContain('pierce');
+    b.unsocket('ember', 0); expect(s.gems).toContain('pierce');
   });
   it('sockets travel with the move when slots are rebound', () => {
-    const sim = new Sim(newProgress(3)); const bs = sim.build.s; bs.gems.push('gem-multi');
-    expect(sim.build.socket('ember', 0, 'gem-multi', moveTags('ember')).ok).toBe(true);
+    const sim = new Sim(newProgress(3)); const bs = sim.build.s; bs.gems.push('multi');
+    expect(sim.build.socket('ember', 0, 'multi', moveTags('ember')).ok).toBe(true);
     expect(sim.moveSpec('ember').projectiles).toBe(3);
     sim.setSlot(4, 'ember'); // move basic attack from RMB to R (swap)
     expect(sim.slots[4]).toBe('ember');
@@ -111,29 +111,94 @@ describe('support gems', () => {
     expect(sim.moveSpec('flare-blitz').projectiles).toBe(1);
   });
   it('multiple projectiles gem actually spawns more projectiles in the sim', () => {
-    const sim = new Sim(newProgress(3)); sim.build.s.gems.push('gem-multi'); sim.build.socket('ember', 0, 'gem-multi', moveTags('ember'));
+    const sim = new Sim(newProgress(3)); sim.build.s.gems.push('multi'); sim.build.socket('ember', 0, 'multi', moveTags('ember'));
     sim.tryCast('ember', sim.player.x + 100, sim.player.y);
     expect(sim.world.query('projectile').filter((e) => e.team === 'player').length).toBe(3);
   });
 });
 
-describe('statuses & reactions', () => {
-  it('ember applies ember-seed; an area fire hit detonates it into a burst (consumed)', () => {
-    const sim = new Sim(newProgress(5)); const p = sim.player;
-    const m = [...sim.world.query('monster')][0]!; m.x = p.x + 60; m.y = p.y; m.hp = m.maxHp = 1e6;
-    const seen: string[] = []; sim.bus.on('reaction', (e) => seen.push(e.id));
-    sim.hit(p, m, 'ember', 1, { powerBonus: 0, leech: 0, kindling: false, spec: sim.moveSpec('ember') }, newChain(1));
-    expect(m.statuses?.['ember-seed']).toBeTruthy();
-    sim.hit(p, m, 'fire-blast', 1, { powerBonus: 0, leech: 0, kindling: false, spec: sim.moveSpec('fire-blast') }, newChain(2));
-    expect(seen).toEqual(['ember-detonate']);
-    expect(m.statuses?.['ember-seed']).toBeUndefined();
+describe('director content (charmander-moves-gems.json)', () => {
+  const cast = (sim: Sim, id: string): void => { sim.cooldowns.clear(); sim.energy = 999; sim.tryCast(id, sim.player.x + 120, sim.player.y); };
+  const fresh = (): Sim => { const sim = new Sim(newProgress(5)); sim.debugLevelUp(true); sim.debugLevelUp(true); return sim; }; // Charizard: 3 sockets
+
+  it('loads + validates with every entry bound (no stubs)', () => {
+    expect(validateDirector()).toEqual([]);
+    expect(Object.values(GEMS).filter((g) => g.stub)).toEqual([]);
+    expect(REACTIONS.filter((r) => r.stub)).toEqual([]);
+    expect(DIRECTOR.moves.flatMap((m) => m.variants).length).toBe(10);
   });
-  it('flamethrower variant pair: burst = short + end explosion + area tag; sustained = longer + widening', () => {
-    const sim = new Sim(newProgress(5));
-    const base = sim.moveSpec('flamethrower');
-    sim.build.chooseUpgrade('flamethrower', 'variant', 'ft-burst'); const burst = sim.moveSpec('flamethrower');
-    sim.build.chooseUpgrade('flamethrower', 'variant', 'ft-sustained'); const sus = sim.moveSpec('flamethrower');
-    expect(burst.params.duration!).toBeLessThan(base.params.duration!); expect(burst.endExplosion).toBeTruthy(); expect(burst.tags.has('area')).toBe(true);
-    expect(sus.params.duration!).toBeGreaterThan(base.params.duration!); expect(sus.widenOverLife).toBeGreaterThan(0); expect(sus.endExplosion).toBeNull();
+
+  // table-driven: every variant x every gem -> socket iff compatible with the variant-modified tags, spec builds, cast runs a few ticks w/o throwing
+  const VARIANTS = DIRECTOR.moves.flatMap((m) => m.variants.map((v) => ({ move: engineMoveId(m.id), v: v.id })));
+  const GEM_IDS = DIRECTOR.supportGems.map((g) => g.id);
+  for (const { move, v } of VARIANTS) for (const g of GEM_IDS) {
+    it(`${move}/${v} + ${g}`, () => {
+      const sim = fresh(); sim.build.s.gems.push(g); sim.build.chooseUpgrade(move, 'variant', v);
+      const res = sim.build.socket(move, 0, g, moveTags(move));
+      expect(res.ok).toBe(gemFits(g, move, moveTags(move)));
+      const spec = sim.moveSpec(move);
+      expect(spec.variant).toBe(v);
+      if (res.ok && !GEMS[g]!.stub) expect(spec.tags.size).toBeGreaterThan(0);
+      const m = [...sim.world.query('monster')][0]!; m.x = sim.player.x + 80; m.y = sim.player.y;
+      expect(() => { cast(sim, move); for (let i = 0; i < 90; i++) sim.step(1 / 60, { moveX: 0, moveY: 0, aimX: sim.player.x + 120, aimY: sim.player.y, slots: [false, false, false, false, false], dodge: false }); }).not.toThrow();
+    });
+  }
+
+  it('ember_volley: 3 shots; + multi = 5 with wider spread', () => {
+    const sim = fresh(); sim.build.chooseUpgrade('ember', 'variant', 'ember_volley');
+    expect(sim.moveSpec('ember').projectiles).toBe(3);
+    sim.build.s.gems.push('multi'); sim.build.socket('ember', 0, 'multi', moveTags('ember'));
+    const s = sim.moveSpec('ember'); expect(s.projectiles).toBe(5); expect(s.spreadDeg).toBeGreaterThan(10);
+  });
+  it('ember_seed leaves a ground seed; a fire hit near it detonates it and chain-detonates neighbours', () => {
+    const sim = fresh(); sim.build.chooseUpgrade('ember', 'variant', 'ember_seed'); const p = sim.player;
+    const m = [...sim.world.query('monster')][0]!; m.x = p.x + 60; m.y = p.y; m.hp = m.maxHp = 1e7;
+    sim.hit(p, m, 'ember', 1, { powerBonus: 0, leech: 0, kindling: false, spec: sim.moveSpec('ember') }, newChain(1));
+    expect(sim.world.query('ground').filter((g) => g.sub === 'seed').length).toBe(1);
+    sim.spawnGround('seed', m.x + 60, m.y, 6, p.id); // neighbour within 3 tiles
+    const ids: string[] = []; sim.bus.on('reaction', (e) => ids.push(e.id));
+    sim.hit(p, m, 'fire-blast', 1, { powerBonus: 0, leech: 0, kindling: false, spec: sim.moveSpec('fire-blast') }, newChain(2));
+    expect(ids.filter((x) => x === 'seed_detonate').length).toBe(2);
+    expect(sim.world.query('ground').filter((g) => g.sub === 'seed' && !g.dead).length).toBe(0);
+  });
+  it('burn_consume: ft_focus on a burning enemy consumes burn for burst damage', () => {
+    const sim = fresh(); sim.build.chooseUpgrade('flamethrower', 'variant', 'ft_focus'); const p = sim.player;
+    const m = [...sim.world.query('monster')][0]!; m.hp = m.maxHp = 1e5; m.burn = { stacks: 3, t: 4, src: p.id };
+    const before = m.hp; sim.hit(p, m, 'flamethrower', 0.0001, { powerBonus: 0, leech: 0, kindling: false, spec: sim.moveSpec('flamethrower') }, newChain(3));
+    expect(m.burn).toBeUndefined(); expect(before - m.hp).toBeGreaterThan(1000);
+  });
+  it('fs_prison roots normal enemies; fs_tornado follows the caster; fc_ram pulls + stuns', () => {
+    const sim = fresh(); const p = sim.player; const m = [...sim.world.query('monster')][0]!; m.x = p.x + 100; m.y = p.y; m.hp = m.maxHp = 1e7;
+    sim.build.chooseUpgrade('fire-spin', 'variant', 'fs_prison'); sim.cooldowns.clear(); sim.energy = 999; sim.tryCast('fire-spin', m.x, m.y);
+    sim.step(1 / 60, { moveX: 0, moveY: 0, aimX: m.x, aimY: m.y, slots: [false, false, false, false, false], dodge: false });
+    expect(m.statuses?.root).toBeTruthy();
+    const sim2 = fresh(); sim2.build.chooseUpgrade('fire-spin', 'variant', 'fs_tornado'); cast(sim2, 'fire-spin');
+    const z = sim2.world.query('zone')[0]!; sim2.player.x += 40; sim2.step(1 / 60, { moveX: 0, moveY: 0, aimX: 0, aimY: 0, slots: [false, false, false, false, false], dodge: false });
+    expect(z.x).toBeCloseTo(sim2.player.x);
+    const sim3 = fresh(); sim3.build.chooseUpgrade('flare-blitz', 'variant', 'fc_ram'); const p3 = sim3.player; const m3 = [...sim3.world.query('monster')][0]!;
+    m3.hp = m3.maxHp = 1e7; m3.x = p3.x + 240; m3.y = p3.y; cast(sim3, 'flare-blitz');
+    for (let i = 0; i < 20; i++) sim3.step(1 / 60, { moveX: 0, moveY: 0, aimX: p3.x + 300, aimY: p3.y, slots: [false, false, false, false, false], dodge: false });
+    expect(m3.statuses?.stun ?? null).not.toBeNull();
+  });
+  it('sun_chain: chain jumps get +10% each under sun (offsets ft_focus -20%)', () => {
+    const sim = fresh(); sim.build.chooseUpgrade('flamethrower', 'variant', 'ft_focus');
+    const s = sim.moveSpec('flamethrower'); const a = [...sim.world.query('monster')]; const [m1, m2] = [a[0]!, a[1]!];
+    const k0 = (sim as unknown as { chainStepMult: (s: unknown, a: unknown, b: unknown) => number }).chainStepMult(s, m1, m2);
+    sim.debugSun(5); const k1 = (sim as unknown as { chainStepMult: (s: unknown, a: unknown, b: unknown) => number }).chainStepMult(s, m1, m2);
+    expect(k0).toBeCloseTo(0.8); expect(k1).toBeCloseTo(0.9);
+  });
+  it('delayed gem leaves a sticky mark; another fire hit detonates it early', () => {
+    const sim = fresh(); const p = sim.player; sim.build.s.gems.push('delayed'); expect(sim.build.socket('ember', 0, 'delayed', moveTags('ember')).ok).toBe(true);
+    const m = [...sim.world.query('monster')][0]!; m.hp = m.maxHp = 1e7;
+    sim.hit(p, m, 'ember', 1, { powerBonus: 0, leech: 0, kindling: false, spec: sim.moveSpec('ember') }, newChain(4));
+    const mark = sim.world.query('blast').find((b) => b.sub === 'sticky')!; expect(mark.life).toBeCloseTo(1);
+    sim.hit(p, m, 'fire-blast', 1, { powerBonus: 0, leech: 0, kindling: false, spec: sim.moveSpec('fire-blast') }, newChain(5));
+    expect(mark.life!).toBeLessThan(0.01);
+  });
+  it('fb_meteor excludes the delayed gem (tag exclusion composes with variant tags)', () => {
+    const sim = fresh(); sim.build.chooseUpgrade('fire-blast', 'variant', 'fb_meteor');
+    const spec = sim.moveSpec('fire-blast'); expect(spec.tags.has('delayed')).toBe(true);
+    const mods = sim.build.modifiersFor('fire-blast'); void mods;
+    expect(compatible(GEMS.delayed!, spec.tags, 'fire-blast')).toBe(false);
   });
 });

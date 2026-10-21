@@ -100,7 +100,7 @@ export class DungeonScene extends Phaser.Scene {
     kb?.on('keydown-TAB', () => this.skills.toggle());
     kb?.on('keydown-I', () => { this.inv.toggle(); this.skills.setOpen(this.inv.open); });
     kb?.on('keydown-L', (ev: KeyboardEvent) => { this.sim.debugLevelUp(ev.shiftKey); this.sim.refreshBuild(); }); // debug
-    kb?.on('keydown-K', () => { this.sim.debugGrantBuild(); if (this.skills.open) this.skills.render(); if (this.talents.open) this.talents.render(); }); // debug: +5 talent pts, 1 of each gem, shards, gold
+    kb?.on('keydown-K', (ev: KeyboardEvent) => { if (ev.shiftKey) { this.sim.debugSun(15); this.say('☀ 大晴天（除錯 15 秒）'); return; } this.sim.debugGrantBuild(); if (this.skills.open) this.skills.render(); if (this.talents.open) this.talents.render(); }); // debug: +5 talent pts, 1 of each gem, shards, gold
     kb?.on('keydown-T', () => this.talents.toggle());
     kb?.on('keydown-R', () => { if (this.sim.player.dead) this.sim.respawn(); });
     kb?.on('keydown-ENTER', () => { if (this.sim.victory) { saveProgress(this.sim.progress); this.scene.start('title'); } });
@@ -159,9 +159,10 @@ export class DungeonScene extends Phaser.Scene {
   private bindEvents(): void {
     const bus = this.sim.bus;
     bus.on('reaction', (e) => { // placeholder VFX until the artist delivers reaction art
-      if (this.vfx) { this.vfx.oneShot('vfx-fire-blast', e.x, e.y, (e.r * 2.6) / 256); this.vfx.hit(e.x, e.y, true); } else this.fx.explosion(e.x, e.y, e.r);
+      if (this.vfx) this.vfx.reaction(e); else this.fx.explosion(e.x, e.y, e.r);
       this.cameras.main.shake(90, 0.004);
     });
+    bus.on('vfx', (e) => { if (this.vfx) this.vfx.fxHint(e); else this.fx.explosion(e.x, e.y, e.r ?? 40); });
     bus.on('build:gain', (e) => this.say(e.what === 'ash_shard' ? '獲得 灰燼碎片' : '獲得 輔助寶石'));
     bus.on('damage:dealt', (e) => {
       const color = e.target === this.sim.player.id ? PALETTE.dmgPlayer : e.typeEff > 1 ? PALETTE.dmgSuper : e.typeEff < 1 ? PALETTE.dmgWeak : PALETTE.dmg;
@@ -440,6 +441,7 @@ export class DungeonScene extends Phaser.Scene {
         case 'blast': { const k = 1 - (e.life ?? 0) / (e.delay ?? 0.4); g.lineStyle(2, 0xffe060).strokeCircle(v.x, v.y, e.r); g.fillStyle(0xff8020, 0.35).fillCircle(v.x, v.y, e.r * k); break; }
         case 'beam': { if (this.vfx) break; const a = p.rot + e.rot; const len = e.reach ?? e.len ?? 300; const pv = this.pose(p); g.lineStyle(e.width ?? 22, 0xff7020, 0.35).lineBetween(pv.x, pv.y, pv.x + Math.cos(a) * len, pv.y + Math.sin(a) * len);
           g.lineStyle((e.width ?? 22) / 3, 0xffe080, 0.6).lineBetween(pv.x, pv.y, pv.x + Math.cos(a) * len, pv.y + Math.sin(a) * len); break; }
+        case 'ground': if (!this.vfx) g.fillStyle(e.sub === 'seed' ? 0xffd040 : 0xff5010, 0.45).fillCircle(v.x, v.y, e.sub === 'seed' ? 6 : e.r); break;
         case 'projectile': g.fillStyle(e.team === 'player' ? 0xfff0b0 : 0x90c8ff).fillCircle(v.x, v.y, e.r * 0.7); break;
         case 'monster': {
           const w = e.r * 2; const frac = Math.max(0, (e.hp ?? 0) / (e.maxHp ?? 1)); const top = this.sprites.has(e.id) ? v.y - e.r - 26 : v.y - e.r - 8;

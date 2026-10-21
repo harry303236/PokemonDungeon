@@ -60,5 +60,117 @@
    "scorch",
    "flash"
   ]
+ },
+ "status-burning": {
+  "file": "vfx-status-burning.png",
+  "frameWidth": 64,
+  "frameHeight": 64,
+  "frames": 8
+ },
+ "status-fire-seed": {
+  "file": "vfx-status-fire-seed.png",
+  "frameWidth": 64,
+  "frameHeight": 64,
+  "frames": 8
+ },
+ "ground-fire": {
+  "file": "vfx-ground-fire.png",
+  "frameWidth": 128,
+  "frameHeight": 128,
+  "frames": 8
+ },
+ "chain-line": {
+  "file": "vfx-chain-line.png",
+  "frameWidth": 256,
+  "frameHeight": 32,
+  "frames": 6,
+  "note": "stretch horizontally between targets"
+ },
+ "detonate": {
+  "file": "vfx-detonate.png",
+  "frameWidth": 256,
+  "frameHeight": 256,
+  "frames": 10
+ },
+ "ember-volley": {
+  "file": "vfx-ember-volley.png",
+  "frameWidth": 64,
+  "frameHeight": 64,
+  "frames": 8
+ },
+ "ft-focus": {
+  "file": "vfx-ft-focus.png",
+  "frameWidth": 256,
+  "frameHeight": 64,
+  "frames": 8,
+  "note": "loop; stretch length, origin at left-center"
+ },
+ "ft-spread": {
+  "file": "vfx-ft-spread.png",
+  "frameWidth": 128,
+  "frameHeight": 128,
+  "frames": 8
+ },
+ "fs-prison": {
+  "file": "vfx-fs-prison.png",
+  "frameWidth": 128,
+  "frameHeight": 128,
+  "frames": 10
+ },
+ "fs-tornado": {
+  "file": "vfx-fs-tornado.png",
+  "frameWidth": 128,
+  "frameHeight": 128,
+  "frames": 10
+ },
+ "fb-meteor": {
+  "file": "vfx-fb-meteor.png",
+  "frameWidth": 128,
+  "frameHeight": 128,
+  "frames": 8,
+  "note": "then play vfx-detonate at impact"
+ },
+ "fb-star": {
+  "file": "vfx-fb-star.png",
+  "frameWidth": 256,
+  "frameHeight": 256,
+  "frames": 12
+ },
+ "fc-comet": {
+  "file": "vfx-fc-comet.png",
+  "frameWidth": 256,
+  "frameHeight": 64,
+  "frames": 8,
+  "note": "attach behind player; leaves vfx-ground-fire"
+ },
+ "fc-ram": {
+  "file": "vfx-fc-ram.png",
+  "frameWidth": 128,
+  "frameHeight": 128,
+  "frames": 8
+ },
+ "rx-burn-consume": {
+  "file": "vfx-rx-burn-consume.png",
+  "frameWidth": 128,
+  "frameHeight": 128,
+  "frames": 10
+ },
+ "rx-sun-chain": {
+  "file": "vfx-rx-sun-chain.png",
+  "frameWidth": 256,
+  "frameHeight": 32,
+  "frames": 6
+ },
+ "rx-ground-sun": {
+  "file": "vfx-rx-ground-sun.png",
+  "frameWidth": 128,
+  "frameHeight": 128,
+  "frames": 8
+ },
+ "_aliases": {
+  "ember_seed": "vfx-ember + vfx-status-fire-seed",
+  "seed_detonate": "vfx-detonate + vfx-chain-line between seeds",
+  "sticky_early": "vfx-detonate at 0.5 scale",
+  "charge_through_spin": "vfx-fire-spin attached to player at 0.7 scale + vfx-fc-comet"
  }
 }

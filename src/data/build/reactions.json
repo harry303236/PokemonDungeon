@@ -1,9 +1,21 @@
 {
-  "statuses": {
-    "ember-seed": { "name": "餘燼", "maxStacks": 1, "duration": 5 }
+ "statuses": {
+  "root": {
+   "name": "困住",
+   "maxStacks": 1,
+   "duration": 0.6
   },
-  "reactions": [
-    { "id": "ember-detonate", "name": "餘燼引爆", "trigger": { "tagsAll": ["area", "fire"] }, "requires": "ember-seed", "consume": true,
-      "effect": { "type": "burst", "r": 72, "mult": 0.6 } }
-  ]
+  "stun": {
+   "name": "暈眩",
+   "maxStacks": 1,
+   "duration": 0.8
+  },
+  "fire-vuln": {
+   "name": "火傷易傷",
+   "maxStacks": 1,
+   "duration": 0.6
+  }
+ },
+ "reactions": [],
+ "_doc": "Generic status defs. Reaction rules now come from charmander-moves-gems.json + director-bindings.json."
 }

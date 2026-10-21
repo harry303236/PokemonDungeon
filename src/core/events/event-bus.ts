@@ -1,7 +1,8 @@
 export interface ChainContext { rootId: number; depth: number; visited: Set<string> }
 export interface GameEvents {
   'damage:dealt': { target: number; amount: number; isCrit: boolean; typeEff: number; x: number; y: number };
-  'reaction': { id: string; x: number; y: number; r: number };
+  'reaction': { id: string; x: number; y: number; r: number; vfx?: string; x2?: number; y2?: number };
+  'vfx': { key: string; x: number; y: number; r?: number; x2?: number; y2?: number };
   'build:gain': { what: string };
   'entity:killed': { victim: number; killer: number; cause: 'hit' | 'burn' | 'bound'; chain: ChainContext };
   'move:cast': { caster: number; moveId: string };
