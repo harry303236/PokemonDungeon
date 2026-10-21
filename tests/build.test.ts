@@ -299,3 +299,34 @@ describe('fire trail + combo mechanics (data fields)', () => {
     expect(sim.world.query('ground').filter((g) => g.dmgMult).length).toBe(0);
   });
 });
+
+import { stageAdd, stageRemove, statusLine, effectLine, planCost, merged } from '../src/core/build/talent-plan';
+describe('talent plan/confirm + tooltip lines', () => {
+  const N = (id: string) => TALENTS.nodes.find((n) => n.id === id)!;
+  const ctx = { level: 50, evoStage: 3 };
+  it('staging spends nothing and respects prereqs; unstage works', () => {
+    const a = {}; const p: Record<string, number> = {};
+    expect(stageAdd(TALENTS, a, p, 'claw_t1_0', ctx).ok).toBe(false);
+    expect(stageAdd(TALENTS, a, p, 'root', ctx).ok).toBe(true);
+    expect(stageAdd(TALENTS, a, p, 'claw_t1_0', ctx).ok).toBe(true);
+    expect(a).toEqual({}); expect(p).toEqual({ root: 1, claw_t1_0: 1 });
+    expect(stageRemove(TALENTS, a, p, 'root').ok).toBe(false); // staged child depends on it
+    expect(stageRemove(TALENTS, a, p, 'claw_t1_0').ok).toBe(true); expect(p).toEqual({ root: 1 });
+  });
+  it('staged refunds cost ash shards only after free-respec level', () => {
+    const a = { root: 1, claw_t1_0: 2 }; const p: Record<string, number> = {};
+    expect(stageRemove(TALENTS, a, p, 'claw_t1_0').ok).toBe(true);
+    expect(planCost(p, true).ashShards).toBe(1); expect(planCost(p, false).ashShards).toBe(0); expect(merged(a, p).claw_t1_0).toBe(1);
+  });
+  it('status lines: exclusive keystone, level, prereq names, learned', () => {
+    expect(statusLine(TALENTS, { ks_blaze: 1 }, {}, N('ks_solarPower'), ctx).text).toBe('已選擇其他關鍵天賦');
+    expect(statusLine(TALENTS, { root: 1 }, {}, N('claw_t1_mid'), ctx).text).toMatch(/^需要先點：/);
+    expect(statusLine(TALENTS, {}, {}, N('ks_blaze'), { level: 10, evoStage: 1 }).text).toBe(`需要等級 ${TALENTS.meta.evoStageUnlock['3']}`);
+    expect(statusLine(TALENTS, { root: 1 }, {}, N('root'), ctx).text).toBe('已習得');
+  });
+  it('effect line shows current and next rank; keystone has drawback field', () => {
+    const n = N('claw_t1_0'); const v = n.value as number;
+    expect(effectLine(n, 1)).toContain(`目前 +${v}`); expect(effectLine(n, 1)).toContain(`下一級 +${v * 2}`);
+    expect(N('ks_solarPower').drawback).toBeTruthy();
+  });
+});

@@ -180,7 +180,8 @@
         "sun_t3_1"
       ],
       "exclusiveGroup": "keystone",
-      "uiPin": "top"
+      "uiPin": "top",
+      "drawback": "每秒損失 1% 最大 HP（晴天時）"
     },
     {
       "id": "claw_t1_0",

@@ -1,6 +1,6 @@
 import { warnOnce, type Modifier } from './pipeline';
 
-export interface TalentNode { id: string; name?: string; branch: string; tier: number; evoStage: number; effectType: string; value: number | string; maxRank: number; requires: string[]; exclusiveGroup: string | null }
+export interface TalentNode { id: string; name?: string; branch: string; tier: number; evoStage: number; effectType: string; value: number | string; maxRank: number; requires: string[]; exclusiveGroup: string | null; drawback?: string; desc?: string }
 export interface TalentUi { drawPrereqLines?: boolean; keystonePinnedTop?: boolean; hideUnimplemented?: boolean; pointsMustEqualLevelMinus1?: boolean }
 export interface TalentMechanics { comboResetSec: number; trailLifeSec: number; trailPerEnemyIcdSec: number }
 export interface TalentMeta { ui?: TalentUi; mechanics?: TalentMechanics; pointsPerLevel: number; maxLevel: number; totalPoints: number; evoStageUnlock: Record<string, number>; socketsPerMoveByEvoStage: Record<string, number>; respec: { freeBeforeLevel: number; perNode: string; full: string } }

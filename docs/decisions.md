@@ -66,3 +66,8 @@
   `drawPrereqLines` (SVG lines, lit gold when both ends allocated), `keystonePinnedTop`, `hideUnimplemented` (overrides grey-out; hidden parents are dropped from `requires` so they never block), `pointsMustEqualLevelMinus1` (points = level−1; debug grants count only when `build.debug`, shown separately as 除錯 +N).
 - Debug mode = `?debug` or localhost; K grants only work in debug mode.
 - Implemented: fireCrit/critDmg/burnConsumeMult/stunDur/projSpeed/flameChargeHits/comboStack/trailIgnite/trailDmg; keystones blaze, solarPower, skyGlide. Hidden: `sunDurationPct` (sun_t2_1).
+
+## ADR: Talent tree v4 (PoE/D4 style) + plan/confirm
+- Art: public/assets/hud/talents (frames small/notable/keystone/tooltip, icons/talent-<id>.png; missing icon -> root icon at 35%). Layout matches /workspace/art_talent/mockup-talent-tree.png: root bottom, 3 branches up, keystones on top.
+- Clicks only stage (`talent-plan.ts`: stageAdd/stageRemove on a pending delta); Confirm applies refunds (ash shards after free-respec level) then allocations in data order; Cancel discards.
+- Tooltip lines are data-driven: name split "標題：描述", effect via talent-labels.json (current/next rank; `frac` fmt for fractional values), red `drawback` field (new, on ks_solarPower), status priority: exclusive > level (evoStageUnlock) > points > prereq names.
