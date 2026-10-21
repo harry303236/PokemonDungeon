@@ -2,7 +2,14 @@ import type { Sim } from '../../core/sim';
 import { TALENTS, fullResetCost, RESPEC_FREE_BEFORE } from '../../core/build/build';
 import { canAllocate, isImplemented, levelPoints, debugPoints, pointsSpent, type TalentNode } from '../../core/build/talents';
 
-const fmtVal = (v: number | string, t: string): string => (typeof v === 'number' ? `${t} ${v > 0 ? '+' : ''}${v}` : `${t}: ${v}`);
+import LABELS from '../../data/build/talent-labels.json';
+type Lbl = { label: string; fmt: 'pct' | 'flat' | 'flag' | 'none' };
+/** Data-driven effect label (talent-labels.json). Returns '' for effectType none. */
+export const fmtVal = (v: number | string, t: string): string => {
+  const l = (LABELS as unknown as Record<string, Lbl>)[t]; if (!l) return `${t} ${v}`;
+  if (l.fmt === 'none') return ''; if (l.fmt === 'flag' || typeof v !== 'number') return l.label;
+  return `${l.label} ${v > 0 ? '+' : ''}${v}${l.fmt === 'pct' ? '%' : ''}`;
+};
 const UI = TALENTS.meta.ui ?? {};
 const NW = 116, NH = 40, COLW = 388, ROWH = 62, TOP = 8;
 
@@ -35,19 +42,20 @@ export class TalentPanelView {
     const pos = new Map(nodes.map((n) => [n.id, slot(n, branches)]));
     const W = COLW * branches.length, H = Math.max(...[...pos.values()].map((p) => p.y)) + NH + 6;
     const lines = UI.drawPrereqLines === false ? '' : nodes.flatMap((n) => n.requires.filter((r) => pos.has(r)).map((r) => {
-      const p = pos.get(n.id)!, q = pos.get(r)!; const lit = (a[n.id] ?? 0) > 0 && (a[r] ?? 0) > 0;
+      const p = pos.get(n.id)!, q = pos.get(r)!; const lit = (a[n.id] ?? 0) > 0 && (a[r] ?? 0) > 0; const ksEdge = n.effectType === 'keystone';
       const x1 = q.x + NW / 2, y1 = q.y, x2 = p.x + NW / 2, y2 = p.y + NH;
-      return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${lit ? '#ffb040' : '#4a4038'}" stroke-width="${lit ? 3 : 2}"${lit ? ' filter="url(#glow)"' : ''}/>`;
+      return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${lit ? '#ffb040' : ksEdge ? '#7a4a78' : '#4a4038'}" stroke-width="${lit ? 3 : ksEdge ? 2.5 : 2}"${lit ? ' filter="url(#glow)"' : ''}/>`;
     })).join('');
     const box = (n: TalentNode): string => {
       const p = pos.get(n.id)!; const r = a[n.id] ?? 0; const chk = canAllocate(TALENTS, a, n.id, ctx); const can = chk.ok;
       const unimpl = !isImplemented(n); const ks = n.effectType === 'keystone';
       const border = unimpl ? '#333' : r >= n.maxRank ? '#ffcc66' : r > 0 ? '#e0803a' : can ? '#6a6' : '#443';
-      const tip = unimpl ? '尚未實裝' : `${n.name ?? n.id} · ${fmtVal(n.value, n.effectType)} · 需 ${n.requires.join('+') || '—'} · 進化階段 ${n.evoStage}${can ? '' : ` · ${chk.reason}`}`;
+      const eff = fmtVal(n.value, n.effectType);
+      const tip = unimpl ? '尚未實裝' : `${n.name ?? n.id}${eff ? ` · ${eff}` : ''} · 需 ${n.requires.join('+') || '—'} · 進化階段 ${n.evoStage}${can ? '' : ` · ${chk.reason}`}`;
       return `<div data-node="${n.id}" title="${tip}" style="position:absolute;left:${p.x}px;top:${p.y}px;width:${NW}px;height:${NH}px;box-sizing:border-box;cursor:${unimpl ? 'not-allowed' : 'pointer'};
         border:2px solid ${border};border-radius:${ks ? 12 : 5}px;padding:2px 4px;background:${unimpl ? '#161616' : r ? '#3a2416' : ks ? '#241a2e' : '#1c1814'};opacity:${unimpl ? 0.4 : r || can ? 1 : 0.55};
         overflow:hidden;line-height:1.25;${unimpl ? 'filter:grayscale(1);' : ''}${r && ks ? 'box-shadow:0 0 10px #ffb040;' : ''}">
-        <b style="font-size:11px;color:${ks ? '#f9c' : '#eee'}">${n.name ?? n.id}</b> <span style="color:#fc6">${r}/${n.maxRank}</span><br><small style="color:#aaa">${unimpl ? '尚未實裝' : fmtVal(n.value, n.effectType)}</small></div>`;
+        <b style="font-size:11px;color:${ks ? '#f9c' : '#eee'}">${n.name ?? n.id}</b> <span style="color:#fc6">${r}/${n.maxRank}</span>${unimpl ? '<br><small style="color:#aaa">尚未實裝</small>' : eff && !ks ? `<br><small style="color:#aaa">${eff}</small>` : ''}</div>`;
     };
     const lp = levelPoints(TALENTS, lvl), dp = debugPoints(TALENTS, ctx), spent = pointsSpent(a);
     const paid = lvl >= RESPEC_FREE_BEFORE();

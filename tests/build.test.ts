@@ -272,3 +272,10 @@ describe('director content (charmander-moves-gems.json)', () => {
     expect(boss.statuses?.stun).toBeUndefined(); expect(boss.statuses?.['dmg-vuln']?.t).toBeGreaterThan(2.5);
   });
 });
+
+import LABELS from '../src/data/build/talent-labels.json';
+describe('talent labels', () => {
+  it('every effectType in the talent data has a Chinese label', () => {
+    for (const n of TALENTS.nodes) expect((LABELS as Record<string, unknown>)[n.effectType], n.effectType).toBeTruthy();
+  });
+});
