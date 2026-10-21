@@ -2,7 +2,8 @@ import { warnOnce, type Modifier } from './pipeline';
 
 export interface TalentNode { id: string; name?: string; branch: string; tier: number; evoStage: number; effectType: string; value: number | string; maxRank: number; requires: string[]; exclusiveGroup: string | null }
 export interface TalentUi { drawPrereqLines?: boolean; keystonePinnedTop?: boolean; hideUnimplemented?: boolean; pointsMustEqualLevelMinus1?: boolean }
-export interface TalentMeta { ui?: TalentUi; pointsPerLevel: number; maxLevel: number; totalPoints: number; evoStageUnlock: Record<string, number>; socketsPerMoveByEvoStage: Record<string, number>; respec: { freeBeforeLevel: number; perNode: string; full: string } }
+export interface TalentMechanics { comboResetSec: number; trailLifeSec: number; trailPerEnemyIcdSec: number }
+export interface TalentMeta { ui?: TalentUi; mechanics?: TalentMechanics; pointsPerLevel: number; maxLevel: number; totalPoints: number; evoStageUnlock: Record<string, number>; socketsPerMoveByEvoStage: Record<string, number>; respec: { freeBeforeLevel: number; perNode: string; full: string } }
 export interface TalentData { meta: TalentMeta; nodes: TalentNode[] }
 export type Alloc = Record<string, number>;
 
@@ -95,3 +96,6 @@ export function talentBonuses(d: TalentData, a: Alloc): PlayerBonuses {
   }
   return b;
 }
+
+export const MECH_DEFAULTS: TalentMechanics = { comboResetSec: 2, trailLifeSec: 2, trailPerEnemyIcdSec: 0.5 };
+export const mechanics = (d: TalentData): TalentMechanics => ({ ...MECH_DEFAULTS, ...(d.meta.mechanics ?? {}) });

@@ -158,7 +158,7 @@ export class VfxView {
         const key = e.sub === 'seed' ? 'vfx-status-fire-seed' : sunK ? 'vfx-rx-ground-sun' : 'vfx-ground-fire'; if (!this.has(key)) continue;
         live.add(e.id); const s = this.sprite(e.id, key, e.sub === 'seed' ? 0.75 : 0.65); if (!s.anims.isPlaying) s.play(key);
         s.setPosition(e.x, e.y).setScale(e.sub === 'seed' ? 0.7 : (e.r * 2.6) / 128).setAlpha(Math.min(1, (e.life ?? 1) * 2));
-        if (sunK) s.setBlendMode(Phaser.BlendModes.NORMAL).clearTint(); // ground_sun: tiled sea of fire, normal blend, no additive/white
+        if (sunK) s.setBlendMode(Phaser.BlendModes.NORMAL).clearTint().setDepth(0.62); // ground_sun: tiled sea of fire, normal blend, no additive/white
       } else if (e.kind === 'monster' && e.burn && this.has('vfx-status-burning')) {
         const id = -e.id; live.add(id); const s = this.sprite(id, 'vfx-status-burning', 3); if (!s.anims.isPlaying) s.play('vfx-status-burning');
         const v = pose(e); s.setPosition(v.x, v.y - e.r * 1.6).setScale(0.45);

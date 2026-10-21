@@ -279,3 +279,23 @@ describe('talent labels', () => {
     for (const n of TALENTS.nodes) expect((LABELS as Record<string, unknown>)[n.effectType], n.effectType).toBeTruthy();
   });
 });
+
+import { mechanics } from '../src/core/build/talents';
+describe('fire trail + combo mechanics (data fields)', () => {
+  it('meta.mechanics: trail life 2 s, per-enemy ICD 0.5 s, combo reset 2 s', () => {
+    expect(mechanics(TALENTS)).toMatchObject({ trailLifeSec: 2, trailPerEnemyIcdSec: 0.5, comboResetSec: 2 });
+  });
+  it('overlapping trail patches hit the same enemy at most once per 0.5 s; patches expire after 2 s', () => {
+    const sim = new Sim(newProgress(3)); const mons = sim.world.query('monster'); const m = mons[0]!;
+    for (const o of mons) if (o !== m) { o.x = -9999; o.y = -9999; }
+    const px = sim.player.x + 200, py = sim.player.y; m.x = px; m.y = py; m.hp = m.maxHp = 1e9;
+    for (let i = 0; i < 4; i++) sim.spawnGround('fire', m.x + i * 3, m.y, sim.mech.trailLifeSec, sim.player.id, 0.08);
+    const spy = vi.spyOn(sim, 'hit'); const times: number[] = [];
+    spy.mockImplementation((_s, t, _id, mult) => { if (t === m && mult === 0.08) times.push(sim.time); return 0; });
+    const idle = { moveX: 0, moveY: 0, aimX: 0, aimY: 0, slots: [false, false, false, false, false], dodge: false };
+    for (let i = 0; i < 180; i++) { sim.step(1 / 60, idle); m.x = px; m.y = py; } // pin enemy inside the patches
+    expect(times.length).toBeGreaterThanOrEqual(3); expect(times.length).toBeLessThanOrEqual(5);
+    for (let i = 1; i < times.length; i++) expect(times[i]! - times[i - 1]!).toBeGreaterThanOrEqual(0.5 - 1e-6);
+    expect(sim.world.query('ground').filter((g) => g.dmgMult).length).toBe(0);
+  });
+});

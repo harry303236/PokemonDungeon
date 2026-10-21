@@ -7,9 +7,9 @@ import { calcStats, xpToNext } from './stats/stat-calc';
 import { calcDamage } from './combat/damage';
 import { moveCooldown, energyCost } from './moves/cooldown';
 import { BASIC_MOVE, DEFAULT_SLOTS, assignSlot, validateSlots, type Slots } from './moves/loadout';
-import { Build, ensureBuild, moveTags, MOVE_TAGS, STATUSES, GEMS, reactionsFor, triggerMatches, REACTION_RULES, type BuildSave, type ReactionRule } from './build/build';
+import { TALENTS, Build, ensureBuild, moveTags, MOVE_TAGS, STATUSES, GEMS, reactionsFor, triggerMatches, REACTION_RULES, type BuildSave, type ReactionRule } from './build/build';
 import { baseSpec, buildMoveSpec, dmgFactor, areaFactor, type Modifier, type MoveSpec } from './build/pipeline';
-import { emptyBonuses, type PlayerBonuses } from './build/talents';
+import { emptyBonuses, mechanics, type PlayerBonuses } from './build/talents';
 import { findPath, clampToFloor, hasLineOfSight, type Pt } from './dungeon/pathfind';
 import { rollItem, canEquip, type Item, type ItemSlot } from './loot/loot-roller';
 import { monster as monsterData, move as moveData, species as speciesData, MONSTERS } from '../data/registry';
@@ -73,6 +73,10 @@ export class Sim {
   private trailAcc = 0;
   private moveTrail = 0;
   private dashHitCount = new Map<number, { n: number; t: number }>();
+  /** fire trail: same enemy takes trail damage at most once per trailPerEnemyIcdSec across ALL patches */
+  private trailHitT = new Map<number, number>();
+  trailCanHit(id: number): boolean { const t = this.trailHitT.get(id); if (t !== undefined && this.time - t < this.mech.trailPerEnemyIcdSec) return false; this.trailHitT.set(id, this.time); return true; }
+  readonly mech = mechanics(TALENTS);
   private combo = 0; private comboT = -9;
   /** reaction once-per-object-per-frame guard (cleared every step) */
   private reactedThisFrame = new Set<string>();
@@ -253,7 +257,7 @@ export class Sim {
   /** trailIgnite: walking leaves short-lived fire (direct dmg scaled by trailDmgPct). */
   private walkTrail(dist: number): void {
     if (this.bon.trailIgnite <= 0) return; this.moveTrail += dist; if (this.moveTrail < 40) return; this.moveTrail = 0;
-    this.spawnGround('fire', this.player.x, this.player.y, 1.5, this.player.id, 0.08 * (1 + this.bon.trailDmgPct / 100));
+    this.spawnGround('fire', this.player.x, this.player.y, this.mech.trailLifeSec, this.player.id, 0.08 * (1 + this.bon.trailDmgPct / 100));
   }
   private stepAlong(path: Pt[], dt: number): void {
     const p = this.player; let budget = (p.stats?.moveSpeed ?? 160) * dt;
@@ -420,7 +424,7 @@ export class Sim {
       // ks_solarPower: special attack x1.5 during Sunny Day
       if (kb.has('ks_solarPower') && this.sunT > 0 && m.category === 'special') mult *= 1.5;
       // comboStack: consecutive hits (<1.5 s apart) stack +2%/stack per rank, max 10 stacks
-      if (this.bon.comboStack > 0 && target.kind === 'monster') { this.combo = this.time - this.comboT < 1.5 ? Math.min(10, this.combo + 1) : 1; this.comboT = this.time; mult *= 1 + 0.02 * this.combo * this.bon.comboStack; }
+      if (this.bon.comboStack > 0 && target.kind === 'monster') { this.combo = this.time - this.comboT < this.mech.comboResetSec ? Math.min(10, this.combo + 1) : 1; this.comboT = this.time; mult *= 1 + 0.02 * this.combo * this.bon.comboStack; }
     }
     const tierDmg = src.team === 'enemy' ? BALANCE.tierDmg ** (this.floorNo - 1) : 1;
     const { dmg, typeEff } = calcDamage({ level: src.level ?? 1, power: m.power, atk: phys ? a.atk : a.spa, def: phys ? d.def : d.spd, moveType: m.type,
@@ -634,7 +638,7 @@ export class Sim {
       }
       else if (e.kind === 'ground' && e.sub === 'fire') {
         e.tickT = (e.tickT ?? 0) - dt;
-        if (e.tickT <= 0) { e.tickT += e.tick ?? 0.5; for (const t of this.hash.near(e.x, e.y, e.r + 30)) if (!t.dead && Math.hypot(t.x - e.x, t.y - e.y) < e.r + t.r) { this.applyBurn(t, p.id); if (e.dmgMult) this.hit(p, t, BASIC, e.dmgMult, undefined, newChain(this.rootSeq++)); } }
+        if (e.tickT <= 0) { e.tickT += e.tick ?? 0.5; for (const t of this.hash.near(e.x, e.y, e.r + 30)) if (!t.dead && Math.hypot(t.x - e.x, t.y - e.y) < e.r + t.r) { this.applyBurn(t, p.id); if (e.dmgMult && this.trailCanHit(t.id)) this.hit(p, t, BASIC, e.dmgMult, undefined, newChain(this.rootSeq++)); } }
       }
       if (e.life <= 0) e.dead = true;
     }
