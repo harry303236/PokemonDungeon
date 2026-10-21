@@ -4,6 +4,8 @@ import { BALANCE } from '../../core/balance';
 import { WALL } from '../../core/dungeon/bsp-gen';
 import { monster as monsterData, move as moveData } from '../../data/registry';
 import { moveCooldown } from '../../core/moves/cooldown';
+import { SpriteProvider, TILESET_KEY, type AnimName } from '../views/sprite-provider';
+import { Fx } from '../views/fx';
 import { InputMap } from '../input/input-map';
 import { InventoryView } from '../views/inventory-view';
 import { saveProgress } from '../save-io';
@@ -27,6 +29,15 @@ export class DungeonScene extends Phaser.Scene {
   private drawnFloor = -1;
   private inv!: InventoryView;
   private saveT = 0;
+  private fx!: Fx;
+  private bars!: Phaser.GameObjects.Graphics;
+  private sprites = new Map<number, Phaser.GameObjects.Sprite>();
+  private lastPos = new Map<number, { x: number; y: number }>();
+  private hurtUntil = new Map<number, number>();
+  private castUntil = 0;
+  private blasts = new Map<number, { x: number; y: number; r: number }>();
+  private tileLayers: Phaser.Tilemaps.TilemapLayer[] = [];
+  private now = 0;
 
   constructor() { super('dungeon'); }
 
@@ -34,7 +45,9 @@ export class DungeonScene extends Phaser.Scene {
     this.sim = new Sim(data.progress);
     this.input2 = new InputMap(this);
     this.mapG = this.add.graphics();
-    this.g = this.add.graphics();
+    this.g = this.add.graphics().setDepth(1);
+    this.bars = this.add.graphics().setDepth(7);
+    this.fx = new Fx(this);
     this.hud = this.add.graphics().setScrollFactor(0).setDepth(10);
     this.hudText = this.add.text(16, 0, '', { fontSize: '14px', color: '#fff' }).setScrollFactor(0).setDepth(11);
     this.banner = this.add.text(0, 80, '', { fontSize: '26px', color: '#ffe080', stroke: '#000', strokeThickness: 4 }).setScrollFactor(0).setDepth(11).setOrigin(0.5);
@@ -55,9 +68,15 @@ export class DungeonScene extends Phaser.Scene {
     bus.on('damage:dealt', (e) => {
       const color = e.target === this.sim.player.id ? '#ff5050' : e.typeEff > 1 ? '#ffe040' : e.typeEff < 1 ? '#999' : '#fff';
       const size = e.isCrit || e.typeEff > 1 ? 20 : 14;
+      const tgt = this.sim.world.get(e.target);
+      this.hurtUntil.set(e.target, this.now + 0.25);
+      const big = e.isCrit || e.typeEff > 1 || (!!tgt?.maxHp && e.amount >= tgt.maxHp * 0.2);
+      this.fx.hit(e.x, e.y + 8, big);
+      if (big || e.target === this.sim.player.id) this.cameras.main.shake(110, e.target === this.sim.player.id ? 0.006 : 0.004);
       const txt = this.add.text(e.x + Phaser.Math.Between(-8, 8), e.y, String(e.amount), { fontSize: `${size}px`, color, stroke: '#000', strokeThickness: 3 }).setOrigin(0.5).setDepth(5);
       this.tweens.add({ targets: txt, y: e.y - 36, alpha: 0, duration: 700, onComplete: () => txt.destroy() });
     });
+    bus.on('move:cast', () => { const p = this.sim.player; this.castUntil = this.now + 0.3; this.fx.muzzle(p.x, p.y, p.rot); });
     bus.on('player:levelup', (e) => { this.say(t('hud.levelup', { level: e.level })); saveProgress(this.sim.progress); });
     bus.on('player:evolve', (e) => { this.say(t(`hud.evolve.${e.stage}`)); saveProgress(this.sim.progress); });
     bus.on('floor:cleared', () => this.say(t('hud.exitOpen')));
@@ -65,6 +84,7 @@ export class DungeonScene extends Phaser.Scene {
   }
 
   update(_time: number, deltaMs: number): void {
+    this.now += deltaMs / 1000;
     this.acc += Math.min(0.1, deltaMs / 1000);
     const cmd = this.input2.read();
     if (this.inv.open) { cmd.basic = false; cmd.slots = [false, false, false, false]; }
@@ -81,6 +101,8 @@ export class DungeonScene extends Phaser.Scene {
   private drawMap(): void {
     const f = this.sim.floor; const g = this.mapG; g.clear();
     this.drawnFloor = this.sim.floorNo;
+    this.tileLayers.forEach((l) => l.tilemap.destroy()); this.tileLayers = [];
+    if (SpriteProvider.tiles) { this.buildTilemap(); return; }
     for (let y = 0; y < f.h; y++) for (let x = 0; x < f.w; x++) {
       const wall = f.tiles[y * f.w + x] === WALL;
       if (wall) {
@@ -90,7 +112,77 @@ export class DungeonScene extends Phaser.Scene {
     }
   }
 
+  private buildTilemap(): void {
+    const f = this.sim.floor; const COLS = 29; const fr = (c: number, r: number): number => r * COLS + c;
+    const FLOORS = [fr(10, 7), fr(10, 7), fr(10, 7), fr(11, 7), fr(13, 7), fr(10, 8)];
+    const DECOR = [fr(1, 3), fr(2, 3), fr(1, 4), fr(2, 4), fr(1, 2), fr(0, 2), fr(5, 2), fr(6, 2), fr(3, 4)];
+    const hash = (x: number, y: number): number => { let h = (x * 374761393 + y * 668265263 + this.sim.floorNo * 982451653) | 0; h = (h ^ (h >>> 13)) * 1274126177; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+    const isFloor = (x: number, y: number): boolean => x >= 0 && y >= 0 && x < f.w && y < f.h && f.tiles[y * f.w + x] !== WALL;
+    const base: number[][] = []; const deco: number[][] = [];
+    for (let y = 0; y < f.h; y++) {
+      const row: number[] = []; const drow: number[] = [];
+      for (let x = 0; x < f.w; x++) {
+        let t = -1; let d = -1;
+        if (isFloor(x, y)) {
+          t = FLOORS[Math.floor(hash(x, y) * FLOORS.length)] ?? fr(10, 7);
+          const isEdge = !isFloor(x, y - 1) || !isFloor(x - 1, y) || !isFloor(x + 1, y) || !isFloor(x, y + 1);
+          if (!isEdge && hash(y, x) < 0.04) d = DECOR[Math.floor(hash(x + 7, y + 3) * DECOR.length)] ?? -1;
+        } else if (isFloor(x, y + 1)) t = fr(10, 4); // wall face
+        else if ([[1, 0], [-1, 0], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]].some(([dx, dy]) => isFloor(x + (dx ?? 0), y + (dy ?? 0)))) t = fr(10, 2); // wall top
+        row.push(t); drow.push(d);
+      }
+      base.push(row); deco.push(drow);
+    }
+    for (const [data, depth] of [[base, 0], [deco, 0.5]] as const) {
+      const map = this.make.tilemap({ data: data as number[][], tileWidth: 16, tileHeight: 16 });
+      const ts = map.addTilesetImage(TILESET_KEY, TILESET_KEY, 16, 16, 0, 1);
+      if (!ts) continue;
+      const layer = map.createLayer(0, ts, 0, 0);
+      if (layer) { layer.setScale(T / 16).setDepth(depth); this.tileLayers.push(layer); }
+    }
+  }
+
+  private animFor(e: { id: number; kind: string; x: number; y: number; dash?: unknown; ai?: { state: string } }): AnimName {
+    if ((this.hurtUntil.get(e.id) ?? 0) > this.now) return 'hurt';
+    if (e.kind === 'player' ? this.castUntil > this.now || !!e.dash : e.ai?.state === 'attack') return 'attack';
+    const lp = this.lastPos.get(e.id); const moved = lp ? Math.hypot(e.x - lp.x, e.y - lp.y) > 0.3 : false;
+    this.lastPos.set(e.id, { x: e.x, y: e.y });
+    return moved ? 'walk' : 'idle';
+  }
+
+  private syncSprites(): void {
+    const seen = new Set<number>();
+    for (const e of this.sim.world.entities.values()) {
+      if (e.dead || (e.kind !== 'player' && e.kind !== 'monster') || !e.speciesId || !SpriteProvider.has(e.speciesId)) continue;
+      seen.add(e.id);
+      let spr = this.sprites.get(e.id);
+      if (!spr) { spr = this.add.sprite(e.x, e.y, `${e.speciesId}-walk`).setOrigin(0.5, 0.62); this.sprites.set(e.id, spr); }
+      const key = SpriteProvider.animKey(e.speciesId, this.animFor(e), e.rot);
+      if (key && spr.anims.currentAnim?.key !== key) spr.play(key, true);
+      spr.setScale(e.isBoss ? 2 : 2).setPosition(e.x, e.y).setDepth(2 + e.y / 100000);
+      const blink = e.kind === 'player' && (e.iframes ?? 0) > 0 && Math.floor(this.sim.time * 20) % 2 === 0;
+      spr.setAlpha(blink ? 0.5 : 1);
+      if ((this.hurtUntil.get(e.id) ?? 0) - 0.17 > this.now) spr.setTintFill(0xffffff); else if (e.burn) spr.setTint(0xffb080); else spr.clearTint();
+    }
+    for (const [id, spr] of this.sprites) if (!seen.has(id)) { spr.destroy(); this.sprites.delete(id); this.lastPos.delete(id); }
+  }
+
+  private emitFx(): void {
+    const s = this.sim; const p = s.player; const live = new Set<number>();
+    for (const e of s.world.entities.values()) {
+      if (e.dead) continue;
+      if (e.kind === 'projectile') this.fx.projectile(e.x, e.y, e.team === 'enemy');
+      else if (e.kind === 'beam') this.fx.beam(p.x, p.y, p.rot + e.rot, e.len ?? 300, e.width ?? 22);
+      else if (e.kind === 'zone') this.fx.zone(e.x, e.y, e.r);
+      else if (e.kind === 'blast') { live.add(e.id); this.blasts.set(e.id, { x: e.x, y: e.y, r: e.r }); this.fx.telegraph(e.x, e.y, e.r); }
+      else if ((e.kind === 'monster' || e.kind === 'player') && e.burn) this.fx.burnTick(e.x, e.y);
+    }
+    if (p.dash?.moveId) this.fx.dash(p.x, p.y);
+    for (const [id, b] of this.blasts) if (!live.has(id)) { this.fx.explosion(b.x, b.y, b.r); this.cameras.main.shake(160, 0.008); this.blasts.delete(id); }
+  }
+
   private drawEntities(): void {
+    this.syncSprites(); this.emitFx(); this.bars.clear();
     const g = this.g; g.clear(); const s = this.sim; const p = s.player;
     const ex = s.floor.exit;
     g.lineStyle(3, s.exitOpen ? 0x40ff80 : 0x555555).strokeCircle((ex.cx + 0.5) * T, (ex.cy + 0.5) * T, T * 0.9);
@@ -98,23 +190,27 @@ export class DungeonScene extends Phaser.Scene {
       if (e.dead) continue;
       switch (e.kind) {
         case 'item': g.fillStyle(RARITY_COLOR[e.item?.rarity ?? 'common'] ?? 0xffffff).fillRect(e.x - 6, e.y - 6, 12, 12); g.lineStyle(1, 0x000000).strokeRect(e.x - 6, e.y - 6, 12, 12); break;
-        case 'zone': g.fillStyle(0xff6020, 0.25).fillCircle(e.x, e.y, e.r); g.lineStyle(2, 0xff9040, 0.8).strokeCircle(e.x, e.y, e.r); break;
+        case 'zone': g.fillStyle(0xff6020, 0.15).fillCircle(e.x, e.y, e.r); g.lineStyle(2, 0xff9040, 0.5).strokeCircle(e.x, e.y, e.r); break;
         case 'blast': { const k = 1 - (e.life ?? 0) / (e.delay ?? 0.4); g.lineStyle(2, 0xffe060).strokeCircle(e.x, e.y, e.r); g.fillStyle(0xff8020, 0.35).fillCircle(e.x, e.y, e.r * k); break; }
-        case 'beam': { const a = p.rot + e.rot; const len = e.len ?? 300; g.lineStyle(e.width ?? 22, 0xff7020, 0.6).lineBetween(p.x, p.y, p.x + Math.cos(a) * len, p.y + Math.sin(a) * len);
-          g.lineStyle((e.width ?? 22) / 3, 0xffe080, 0.9).lineBetween(p.x, p.y, p.x + Math.cos(a) * len, p.y + Math.sin(a) * len); break; }
-        case 'projectile': g.fillStyle(e.team === 'player' ? 0xffa030 : 0x60a0ff).fillCircle(e.x, e.y, e.r); break;
+        case 'beam': { const a = p.rot + e.rot; const len = e.len ?? 300; g.lineStyle(e.width ?? 22, 0xff7020, 0.35).lineBetween(p.x, p.y, p.x + Math.cos(a) * len, p.y + Math.sin(a) * len);
+          g.lineStyle((e.width ?? 22) / 3, 0xffe080, 0.6).lineBetween(p.x, p.y, p.x + Math.cos(a) * len, p.y + Math.sin(a) * len); break; }
+        case 'projectile': g.fillStyle(e.team === 'player' ? 0xfff0b0 : 0x90c8ff).fillCircle(e.x, e.y, e.r * 0.7); break;
         case 'monster': {
+          const w = e.r * 2; const frac = Math.max(0, (e.hp ?? 0) / (e.maxHp ?? 1)); const top = this.sprites.has(e.id) ? e.y - e.r - 26 : e.y - e.r - 8;
+          this.bars.fillStyle(0x000000).fillRect(e.x - w / 2, top, w, 4); this.bars.fillStyle(e.isBoss ? 0xff4040 : 0x40e040).fillRect(e.x - w / 2, top, w * frac, 4);
+          g.fillStyle(0x000000, 0.35).fillEllipse(e.x, e.y + e.r * 0.5, e.r * 2, e.r * 0.8);
+          if (this.sprites.has(e.id)) { if (e.ai?.state === 'attack') g.lineStyle(2, 0xff3030, 0.8).strokeEllipse(e.x, e.y + e.r * 0.5, e.r * 2.6, e.r * 1.2); break; }
           const md = monsterData(e.monsterId ?? '');
           if (e.ai?.state === 'attack') g.lineStyle(2, 0xff3030, 0.8).strokeCircle(e.x, e.y, e.r + 6);
           g.fillStyle(hex(md.color)).fillCircle(e.x, e.y, e.r);
           g.fillStyle(0xffffff).fillCircle(e.x + Math.cos(e.rot) * e.r * 0.6, e.y + Math.sin(e.rot) * e.r * 0.6, 3);
           if (e.burn) g.lineStyle(2, 0xff5010).strokeCircle(e.x, e.y, e.r + 2);
-          const w = e.r * 2; const frac = Math.max(0, (e.hp ?? 0) / (e.maxHp ?? 1));
-          g.fillStyle(0x000000).fillRect(e.x - w / 2, e.y - e.r - 8, w, 4); g.fillStyle(e.isBoss ? 0xff4040 : 0x40e040).fillRect(e.x - w / 2, e.y - e.r - 8, w * frac, 4);
           break;
         }
         case 'player': {
           if (e.dead) break;
+          g.fillStyle(0x000000, 0.35).fillEllipse(e.x, e.y + 7, 24, 9);
+          if (this.sprites.has(e.id)) break;
           const blink = (e.iframes ?? 0) > 0 && Math.floor(s.time * 20) % 2 === 0;
           g.fillStyle(SPECIES_COLOR[e.speciesId ?? ''] ?? 0xf08030, blink ? 0.4 : 1).fillCircle(e.x, e.y, e.r);
           g.fillStyle(0xffd040).fillCircle(e.x - Math.cos(e.rot) * e.r, e.y - Math.sin(e.rot) * e.r, 5); // tail flame

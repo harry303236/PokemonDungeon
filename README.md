@@ -2,6 +2,12 @@
 
 一款 Diablo 風格的地城刷寶遊戲，玩家直接操控寶可夢（目前只有小火龍線）。技術棧：Phaser 3 + TypeScript + Vite。規格文件放在 `docs/`。
 
+## 美術素材（自動）
+`npm install` 會透過 postinstall 自動執行 `scripts/fetch-assets.ts --if-missing`；`npm run dev` 和 `npm run build` 之前也會再檢查一次（已有快取就跳過）。
+- 寶可夢動畫 sprite（Idle／Walk／Attack／Hurt，8 方向）來自 [PMD SpriteCollab](https://github.com/PMDCollab/SpriteCollab)；抓不到時改用 PokeAPI 靜態圖。存放在 `public/assets/skin/`，**已加入 .gitignore，不會 commit**。
+- 地城 tileset：Kenney「Roguelike Caves & Dungeons」（CC0），commit 在 `public/assets/cc0/`。
+- 強制重抓：`npm run fetch-assets`。若下載失敗（例如離線），遊戲會自動退回 placeholder 圖形。
+
 ## 執行
 ```bash
 npm install

@@ -12,7 +12,11 @@
     "lint": "eslint .",
     "data:fetch": "tsx scripts/fetch-pokeapi.ts",
     "data:build": "tsx scripts/build-data.ts",
-    "validate-data": "tsx scripts/validate-data.ts"
+    "validate-data": "tsx scripts/validate-data.ts",
+    "fetch-assets": "tsx scripts/fetch-assets.ts --force",
+    "postinstall": "tsx scripts/fetch-assets.ts --if-missing",
+    "predev": "tsx scripts/fetch-assets.ts --if-missing",
+    "prebuild": "tsx scripts/fetch-assets.ts --if-missing"
   },
   "keywords": [],
   "author": "",

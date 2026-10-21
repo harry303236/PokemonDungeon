@@ -1,5 +1,28 @@
 import Phaser from 'phaser';
+import { SpriteProvider, TILESET_KEY, TILESET_URL, type SkinManifest } from '../views/sprite-provider';
+
+/** Loads optional skin (sprites) + CC0 tileset. Missing files are tolerated -> placeholder rendering. */
 export class BootScene extends Phaser.Scene {
   constructor() { super('boot'); }
-  create(): void { this.scene.start('title'); } // all data is bundled JSON; nothing to fetch
+  preload(): void {
+    this.load.on('loaderror', (f: Phaser.Loader.File) => console.info(`[skin] optional asset missing: ${f.key}`));
+    this.load.text('skin-manifest', 'assets/skin/manifest.json'); // text, so an SPA 404 fallback page can't throw
+    this.load.spritesheet(TILESET_KEY, TILESET_URL, { frameWidth: 16, frameHeight: 16, spacing: 1 });
+  }
+  create(): void {
+    this.makeFxTextures();
+    SpriteProvider.tiles = this.textures.exists(TILESET_KEY);
+    let m: SkinManifest | undefined;
+    try { m = JSON.parse(String(this.cache.text.get('skin-manifest') ?? '')) as SkinManifest; } catch { console.info('[skin] no skin manifest; using placeholders'); }
+    if (!m?.species) { this.scene.start('title'); return; }
+    SpriteProvider.queueSkin(this, m);
+    this.load.once('complete', () => { SpriteProvider.createAnims(this); this.scene.start('title'); });
+    this.load.start();
+  }
+  private makeFxTextures(): void {
+    const g = this.make.graphics({}, false);
+    for (let i = 8; i > 0; i--) { g.fillStyle(0xffffff, 0.12 + (8 - i) * 0.1); g.fillCircle(8, 8, i); }
+    g.generateTexture('flare', 16, 16); g.clear();
+    g.fillStyle(0xffffff).fillCircle(3, 3, 3); g.generateTexture('spark', 6, 6); g.destroy();
+  }
 }

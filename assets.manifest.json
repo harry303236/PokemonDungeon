@@ -1,0 +1,8 @@
+{
+  "skinDir": "public/assets/skin",
+  "pmdBase": "https://raw.githubusercontent.com/PMDCollab/SpriteCollab/master/sprite",
+  "fallbackBase": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon",
+  "anims": ["Idle", "Walk", "Attack", "Hurt"],
+  "species": { "charmander": 4, "charmeleon": 5, "charizard": 6, "rattata": 19, "geodude": 74, "poliwag": 60, "onix": 95 },
+  "tileset": { "page": "https://kenney.nl/assets/roguelike-caves-dungeons", "dest": "public/assets/cc0/kenney-roguelike-caves/tiles.png", "zipEntry": "Spritesheet/roguelikeDungeon_transparent.png" }
+}

@@ -8,3 +8,4 @@
 - ADR-021: Floor-5 boss is a single-phase Onix (hpMult 6), no telegraphed phases yet.
 - ADR-022: Kenney assets not added (Q19): all visuals are procedural shapes.
 - ADR-023: Evolution buffs flamethrower beam (length ×1.3/width ×1.6 at Lv16; ×1.6/×2.2 at Lv36, TUNE). Debug hotkeys L / Shift+L for playtesting.
+- ADR-024: Skin layer — PMD SpriteCollab sprites auto-fetched (postinstall/predev/prebuild, cached, git-ignored); Kenney CC0 tileset committed; placeholder shapes only as fallback. Phaser particle FX, white hit-flash, camera shake on big hits/explosions.
