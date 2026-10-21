@@ -54,7 +54,7 @@ export class SkillPanelView {
       d.addEventListener('dragover', (ev) => ev.preventDefault());
       d.addEventListener('drop', (ev) => { ev.preventDefault(); ev.stopPropagation();
         try { const p = JSON.parse(ev.dataTransfer?.getData('text/plain') ?? '') as { gem?: string }; if (!p.gem) return;
-          const res = b.socket(mid, Number(si), p.gem, moveTags(mid)); this.gemMsg = res.ok ? '' : res.reason === 'incompatible' ? `${GEMS[p.gem]?.name} 不適用於此招式` : `無法鑲嵌：${res.reason}`; this.render(); this.onChange();
+          const res = b.socket(mid, Number(si), p.gem); this.gemMsg = res.ok ? '' : res.reason === 'incompatible' ? `${GEMS[p.gem]?.name} 不適用於此招式` : `無法鑲嵌：${res.reason}`; this.render(); this.onChange();
         } catch { /* foreign drop */ } });
       d.addEventListener('contextmenu', (ev) => { ev.preventDefault(); ev.stopPropagation(); b.unsocket(mid, Number(si)); this.render(); this.onChange(); });
     });

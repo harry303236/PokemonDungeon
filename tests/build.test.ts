@@ -96,14 +96,14 @@ describe('support gems', () => {
   it('socket count follows evo stage; incompatible gems refused', () => {
     const { b, s, ctx } = mkBuild(10, 1); s.gems = ['pierce', 'chain', 'aoe'];
     expect(b.sockets('ember').length).toBe(1); ctx.evoStage1 = 3; expect(b.sockets('ember').length).toBe(3);
-    expect(b.socket('ember', 0, 'aoe', moveTags('ember')).reason).toBe('incompatible');
-    expect(b.socket('ember', 0, 'pierce', moveTags('ember')).ok).toBe(true);
+    expect(b.socket('ember', 0, 'aoe').reason).toBe('incompatible');
+    expect(b.socket('ember', 0, 'pierce').ok).toBe(true);
     expect(s.gems).not.toContain('pierce');
     b.unsocket('ember', 0); expect(s.gems).toContain('pierce');
   });
   it('sockets travel with the move when slots are rebound', () => {
     const sim = new Sim(newProgress(3)); const bs = sim.build.s; bs.gems.push('multi');
-    expect(sim.build.socket('ember', 0, 'multi', moveTags('ember')).ok).toBe(true);
+    expect(sim.build.socket('ember', 0, 'multi').ok).toBe(true);
     expect(sim.moveSpec('ember').projectiles).toBe(3);
     sim.setSlot(4, 'ember'); // move basic attack from RMB to R (swap)
     expect(sim.slots[4]).toBe('ember');
@@ -111,7 +111,7 @@ describe('support gems', () => {
     expect(sim.moveSpec('flare-blitz').projectiles).toBe(1);
   });
   it('multiple projectiles gem actually spawns more projectiles in the sim', () => {
-    const sim = new Sim(newProgress(3)); sim.build.s.gems.push('multi'); sim.build.socket('ember', 0, 'multi', moveTags('ember'));
+    const sim = new Sim(newProgress(3)); sim.build.s.gems.push('multi'); sim.build.socket('ember', 0, 'multi');
     sim.tryCast('ember', sim.player.x + 100, sim.player.y);
     expect(sim.world.query('projectile').filter((e) => e.team === 'player').length).toBe(3);
   });
@@ -134,7 +134,7 @@ describe('director content (charmander-moves-gems.json)', () => {
   for (const { move, v } of VARIANTS) for (const g of GEM_IDS) {
     it(`${move}/${v} + ${g}`, () => {
       const sim = fresh(); sim.build.s.gems.push(g); sim.build.chooseUpgrade(move, 'variant', v);
-      const res = sim.build.socket(move, 0, g, moveTags(move));
+      const res = sim.build.socket(move, 0, g);
       expect(res.ok).toBe(gemFits(g, move, sim.build.effectiveTags(move)));
       const spec = sim.moveSpec(move);
       expect(spec.variant).toBe(v);
@@ -147,7 +147,7 @@ describe('director content (charmander-moves-gems.json)', () => {
   it('ember_volley: 3 shots; + multi = 5 with wider spread', () => {
     const sim = fresh(); sim.build.chooseUpgrade('ember', 'variant', 'ember_volley');
     expect(sim.moveSpec('ember').projectiles).toBe(3);
-    sim.build.s.gems.push('multi'); sim.build.socket('ember', 0, 'multi', moveTags('ember'));
+    sim.build.s.gems.push('multi'); sim.build.socket('ember', 0, 'multi');
     const s = sim.moveSpec('ember'); expect(s.projectiles).toBe(5); expect(s.spreadDeg).toBeGreaterThan(10);
   });
   it('ember_seed leaves a ground seed; a fire hit near it detonates it and chain-detonates neighbours', () => {
@@ -188,7 +188,7 @@ describe('director content (charmander-moves-gems.json)', () => {
     expect(k0).toBeCloseTo(0.8); expect(k1).toBeCloseTo(0.9);
   });
   it('delayed gem leaves a sticky mark; another fire hit detonates it early', () => {
-    const sim = fresh(); const p = sim.player; sim.build.s.gems.push('delayed'); expect(sim.build.socket('ember', 0, 'delayed', moveTags('ember')).ok).toBe(true);
+    const sim = fresh(); const p = sim.player; sim.build.s.gems.push('delayed'); expect(sim.build.socket('ember', 0, 'delayed').ok).toBe(true);
     const m = [...sim.world.query('monster')][0]!; m.hp = m.maxHp = 1e7;
     sim.hit(p, m, 'ember', 1, { powerBonus: 0, leech: 0, kindling: false, spec: sim.moveSpec('ember') }, newChain(4));
     const mark = sim.world.query('blast').find((b) => b.sub === 'sticky')!; expect(mark.life).toBeCloseTo(1);

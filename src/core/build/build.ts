@@ -131,7 +131,7 @@ export class Build {
     return [...t];
   }
   /** Socket a gem from the bag (swaps out any gem already there). Compatibility uses effective (variant-modified) tags. */
-  socket(moveId: string, idx: number, gemId: string, _tags?: string[]): { ok: boolean; reason?: string } {
+  socket(moveId: string, idx: number, gemId: string): { ok: boolean; reason?: string } {
     const tags = this.effectiveTags(moveId);
     if (idx < 0 || idx >= socketCount(this.ctx().evoStage1)) return { ok: false, reason: 'socket' };
     const bi = this.s.gems.indexOf(gemId); if (bi < 0) return { ok: false, reason: 'notInBag' };
