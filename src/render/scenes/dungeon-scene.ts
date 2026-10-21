@@ -60,7 +60,7 @@ export class DungeonScene extends Phaser.Scene {
   private marker: { x: number; y: number; t: number } | null = null;
   private env!: Environment;
   private vfx: VfxView | null = null;
-  private glowSpots: { img: Phaser.GameObjects.Image; x: number; y: number; ph: number; r: number }[] = [];
+  private glowSpots: { img: Phaser.GameObjects.Image; x: number; y: number; ph: number; r: number; sp: number }[] = [];
   private fpsMeter = new FpsMeter();
   private fpsText!: Phaser.GameObjects.Text;
 
@@ -222,7 +222,7 @@ export class DungeonScene extends Phaser.Scene {
     const ex = this.sim.floor.exit; if (this.sim.exitOpen) lights.push({ x: (ex.cx + 0.5) * T, y: (ex.cy + 0.5) * T, r: 110, a: 0.8 });
     const v = this.cameras.main.worldView;
     for (const g of this.glowSpots) {
-      const k = 0.55 + 0.45 * Math.sin(t * 2.4 + g.ph); g.img.setAlpha(k * 0.55);
+      const k = 0.55 + 0.45 * Math.sin(t * g.sp + g.ph); g.img.setAlpha(k * 0.55);
       if (g.x > v.x - 80 && g.x < v.right + 80 && g.y > v.y - 80 && g.y < v.bottom + 80) lights.push({ x: g.x, y: g.y, r: g.r, a: 0.35 + 0.35 * k });
     }
     this.env.update(t, dt, this.cameras.main, lights);
@@ -250,7 +250,8 @@ export class DungeonScene extends Phaser.Scene {
   /** Artist 32px volcanic tileset (tiles-dark-32.json names). Void stays empty so the lava layer shows. */
   private buildDarkTilemap(N: Record<string, number>): void {
     const f = this.sim.floor;
-    const hash = (x: number, y: number): number => { let h = (x * 374761393 + y * 668265263 + this.sim.floorNo * 982451653) | 0; h = (h ^ (h >>> 13)) * 1274126177; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+    const seed = this.sim.progress.seed | 0;
+    const hash = (x: number, y: number): number => { let h = (x * 374761393 + y * 668265263 + this.sim.floorNo * 982451653 + seed * 2246822519) | 0; h = (h ^ (h >>> 13)) * 1274126177; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
     const isFloor = (x: number, y: number): boolean => x >= 0 && y >= 0 && x < f.w && y < f.h && f.tiles[y * f.w + x] !== WALL;
     const id = (k: string): number => N[k] ?? -1;
     const DECOR = ['decor-rock', 'decor-rock', 'decor-bones', 'decor-skull', 'decor-mushroom', 'decor-crystal', 'decor-embers'];
@@ -262,14 +263,14 @@ export class DungeonScene extends Phaser.Scene {
       for (let x = 0; x < f.w; x++) {
         let t = -1; let d = -1; const h = hash(x, y);
         if (isFloor(x, y)) {
-          const k = h < 0.03 ? 'floor-lava' : h < 0.11 ? 'floor-cracked' : h < 0.5 ? 'floor-2' : 'floor-1';
+          const k = h < 0.015 ? 'floor-lava' : h < 0.11 ? 'floor-cracked' : h < 0.5 ? 'floor-2' : 'floor-1';
           const door = doorSet.has(y * f.w + x) && id('doorway') >= 0;
           t = door ? id('doorway') : id(k); if (!door && k === 'floor-lava') glows.push({ x, y, c: 0xff5a10, r: 70 });
           const edge = !isFloor(x, y - 1) || !isFloor(x - 1, y) || !isFloor(x + 1, y) || !isFloor(x, y + 1);
           if (x === ex.cx && y === ex.cy) d = id('exit-stairs');
           else if (!edge && !doorSet.has(y * f.w + x) && hash(y, x) < 0.05) { const dk = DECOR[Math.floor(hash(x + 7, y + 3) * DECOR.length)] ?? 'decor-rock'; d = id(dk); const gc = GLOW[dk]; if (gc) glows.push({ x, y, c: gc, r: 55 }); }
         } else if (isFloor(x, y + 1)) {
-          const lava = h < 0.12; t = id(lava ? 'wall-face-lava' : 'wall-face'); if (lava) glows.push({ x, y, c: 0xff5a10, r: 60 });
+          const lava = h < 0.06; t = id(lava ? 'wall-face-lava' : 'wall-face'); if (lava) glows.push({ x, y, c: 0xff5a10, r: 60 });
         } else if ([[1, 0], [-1, 0], [0, -1]].some(([dx, dy]) => isFloor(x + (dx ?? 0), y + (dy ?? 0)))) t = id('wall-top');
         else if (isFloor(x + 1, y + 1)) t = id('corner-tl');
         else if (isFloor(x - 1, y + 1)) t = id('corner-tr');
@@ -289,7 +290,8 @@ export class DungeonScene extends Phaser.Scene {
     for (const g of glows) {
       const cx = (g.x + 0.5) * T, cy = (g.y + 0.5) * T;
       const img = this.add.image(cx, cy, 'env-light').setTint(g.c).setBlendMode(Phaser.BlendModes.ADD).setScale((g.r * 1.1) / 256).setDepth(0.7);
-      this.glowSpots.push({ img, x: cx, y: cy, ph: hash(g.x + 11, g.y) * 6.28, r: g.r * 2.2 });
+      const rk = 0.65 + 0.7 * hash(g.x + 23, g.y + 5); img.setScale((g.r * 1.1 * rk) / 256); // per-crack radius + flicker speed (deterministic by seed/floor/tile)
+      this.glowSpots.push({ img, x: cx, y: cy, ph: hash(g.x + 11, g.y) * 6.28, r: g.r * 2.2 * rk, sp: 1.2 + 2.6 * hash(g.x + 3, g.y + 17) });
     }
   }
 
