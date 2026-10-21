@@ -5,8 +5,14 @@ export const HUD_KEYS = {
   orbFrame: 'hud-orb-frame', hpFill: 'hud-orb-hp-fill', ppFill: 'hud-orb-pp-fill', slotFrame: 'hud-slot-frame', slotFrameSmall: 'hud-slot-frame-small',
   xpFrame: 'hud-xp-frame', xpFill: 'hud-xp-fill', glass: 'hud-orb-glass', buffFrame: 'hud-buff-frame', barBase: 'hud-bar-base',
 } as const;
-/** Bar base slice geometry (1250x445): 7 sockets (5 skills + 2 consumables) + XP groove, in source pixels. */
-export const BAR_BASE = { w: 1250, h: 445, sockets: [168, 319, 471, 624, 777, 930, 1083], socketY: 197, socketW: 116, socketH: 138, xp: { x0: 137, x1: 1105, y: 329.5, h: 29 } };
+/** Bar base slice geometry (1249x440, v2): 5 large skill sockets + 2 small consumable sockets + XP groove, source pixels.
+ *  Measured with scripts/measure-bar-base.py (luminance profiles); socket = inner dark rect. */
+const R = (x: number, y: number, w: number, h: number): { cx: number; cy: number; w: number; h: number } => ({ cx: x + w / 2, cy: y + h / 2, w, h });
+export const BAR_BASE = {
+  w: 1249, h: 440,
+  sockets: [R(110, 122, 115, 142), R(262, 122, 116, 142), R(413, 122, 117, 142), R(565, 122, 118, 142), R(718, 122, 120, 142), R(907, 148, 94, 118), R(1037, 148, 100, 118)],
+  xp: { x0: 131, x1: 1116, y: 328.5, h: 27 },
+};
 /** Icon file names differ from move ids where the artist used the English move name. */
 const ICON_ALIAS: Record<string, string> = { 'flare-blitz': 'flame-charge' };
 export const iconKey = (id: string): string => `icon-${ICON_ALIAS[id] ?? id}`;

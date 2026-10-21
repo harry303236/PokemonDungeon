@@ -111,7 +111,7 @@ export class Hud {
     // slot geometry: artist bar base sockets, or fallback row with individual slot frames
     const left = cx - 262 * k, right = cx + 262 * k, fallbackY = base_ - 26 * k;
     const slotPos = (i: number): { x: number; y: number; size: number } => base
-      ? { x: cx + ((bb.sockets[i] ?? 0) - bb.w / 2) * b, y: baseCY + (bb.socketY - bb.h / 2) * b, size: Math.min(bb.socketW, bb.socketH) * b * 0.9 }
+      ? ((so) => ({ x: cx + (so.cx - bb.w / 2) * b, y: baseCY + (so.cy - bb.h / 2) * b, size: Math.min(so.w, so.h) * b * 0.92 }))(bb.sockets[i] ?? { cx: 0, cy: 0, w: 0, h: 0 })
       : { x: i < 5 ? left + 38 * k + i * SKILL_PITCH * k : left + 5 * SKILL_PITCH * k + 47 * k + (i - 5) * ITEM_PITCH * k, y: i < 5 ? fallbackY : fallbackY + 6 * k,
           size: (i < 5 ? ART.slot.inner * SLOT_SCALE : ART.item.inner * ITEM_SCALE) * k * 0.92 };
     if (base) base.setPosition(cx, baseCY).setScale(b).setVisible(true);
@@ -123,7 +123,7 @@ export class Hud {
       img.setVisible(!base).setPosition(x, y).setScale((isSkill ? SLOT_SCALE : ITEM_SCALE) * k);
       this.rects.push({ kind: isSkill ? 'skill' : 'item', index: isSkill ? i : i - 5, x: x - inner / 2, y: y - inner / 2, w: inner, h: inner });
       const [keyT, cdT, cntT] = [this.texts[i * 3], this.texts[i * 3 + 1], this.texts[i * 3 + 2]];
-      const keyY = base ? baseCY + (bb.socketY + bb.socketH / 2 + 10 - bb.h / 2) * b + 2 * k : y + inner / 2 + 11 * k;
+      const so = bb.sockets[i]; const keyY = base && so ? baseCY + (so.cy + so.h / 2 + 12 - bb.h / 2) * b + 2 * k : y + inner / 2 + 11 * k;
       keyT?.setPosition(x, keyY).setText(isSkill ? st.slotLabels[i] ?? '' : String(i - 4)).setFontSize(Math.round(12 * k));
       const icon = this.iconImgs[i]; const iconId = isSkill ? st.slots[i] : i === 5 ? 'berry' : null;
       const art = !!iconId && this.scene.textures.exists(iconKey(iconId));
@@ -165,8 +165,9 @@ export class Hud {
     fx.fillStyle(0xffa040, 0.2).fillRect(xpX0, xpY - xpH / 2, innerW * ratio, xpH);
     const evo = st.levelsToEvolve === null ? t('hud.xp.final') : t('hud.xp.evo', { n: st.levelsToEvolve });
     this.xpText.setPosition(cx, xpY).setText(`Lv ${st.level}  ·  ${Math.floor(ratio * 100)}%  ·  ${evo}`).setFontSize(Math.round(12 * k));
-    const buffLeft = base ? cx + ((bb.sockets[0] ?? 0) - bb.socketW / 2 - bb.w / 2) * b : left;
-    const slotTop = base ? baseCY + (bb.socketY - bb.socketH / 2 - bb.h / 2) * b : fallbackY - 34 * k;
+    const s0 = bb.sockets[0] ?? { cx: 0, cy: 0, w: 0, h: 0 };
+    const buffLeft = base ? cx + (s0.cx - s0.w / 2 - bb.w / 2) * b : left;
+    const slotTop = base ? baseCY + (s0.cy - s0.h / 2 - bb.h / 2) * b : fallbackY - 34 * k;
     // buff row (above slots, left aligned)
     const by = slotTop - 40 * k;
     this.buffTexts.forEach((bt, i) => {
