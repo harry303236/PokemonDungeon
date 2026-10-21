@@ -4,7 +4,8 @@ import { calcStats } from '../src/core/stats/stat-calc';
 import { calcDamage } from '../src/core/combat/damage';
 import { typeMult } from '../src/core/combat/type-chart';
 import { moveCooldown, energyCost } from '../src/core/moves/cooldown';
-import { generateFloor } from '../src/core/dungeon/bsp-gen';
+import { generateFloor, findDoors, FLOOR } from '../src/core/dungeon/bsp-gen';
+import { fmtNum } from '../src/render/hud/format';
 import { rollRarity, rollItem, canEquip, type Item } from '../src/core/loot/loot-roller';
 import { canTrigger, newChain, childChain } from '../src/core/events/event-bus';
 import { migrate, save, load, SAVE_KEY } from '../src/core/save/save-manager';
@@ -145,7 +146,7 @@ const mkFloor = (rows: string[]): FloorMap => {
   const h = rows.length, w = rows[0]?.length ?? 0; const tiles = new Uint8Array(w * h);
   rows.forEach((r, y) => [...r].forEach((c, x) => (tiles[y * w + x] = c === '.' ? 1 : 0)));
   const room = { x: 0, y: 0, w: 1, h: 1, cx: 1, cy: 1 };
-  return { w, h, tiles, rooms: [room], start: room, exit: room };
+  return { w, h, tiles, rooms: [room], start: room, exit: room, doors: [] };
 };
 describe('pathfinding', () => {
   const f = mkFloor(['#######', '#..#..#', '#..#..#', '#.....#', '#######']);
@@ -248,5 +249,30 @@ describe('tap during dash', () => {
     sim.step(1 / 60, cmd([true, false, false, false, false]));
     for (let i = 0; i < 30 && sim.cooldownLeft('ember') === 0; i++) sim.step(1 / 60, cmd());
     expect(sim.cooldownLeft('ember')).toBeGreaterThan(0);
+  });
+});
+
+describe('doorways', () => {
+  it('are deterministic, on floor, outside rooms and adjacent to a room edge', () => {
+    const a = generateFloor(new Rng(42)), b = generateFloor(new Rng(42));
+    expect(a.doors).toEqual(b.doors);
+    expect(a.doors.length).toBeGreaterThan(0);
+    for (const d of a.doors) {
+      expect(a.tiles[d.y * a.w + d.x]).toBe(FLOOR);
+      expect(a.rooms.some((r) => d.x >= r.x && d.x < r.x + r.w && d.y >= r.y && d.y < r.y + r.h)).toBe(false);
+      expect(a.rooms.some((r) => (d.x >= r.x && d.x < r.x + r.w && (d.y === r.y - 1 || d.y === r.y + r.h)) || (d.y >= r.y && d.y < r.y + r.h && (d.x === r.x - 1 || d.x === r.x + r.w)))).toBe(true);
+    }
+  });
+  it('finds the corridor mouth on a handmade map', () => {
+    const rows = ['#########', '#...#####', '#...#####', '#.......#', '#########'];
+    const w = 9, h = 5; const t = new Uint8Array(w * h); rows.forEach((r, y) => [...r].forEach((c, x) => (t[y * w + x] = c === '.' ? 1 : 0)));
+    expect(findDoors(w, h, t, [{ x: 1, y: 1, w: 3, h: 3, cx: 2, cy: 2 }])).toEqual([{ x: 4, y: 3 }]);
+  });
+});
+
+describe('hud number format', () => {
+  it('abbreviates large values', () => {
+    expect(fmtNum(76)).toBe('76'); expect(fmtNum(999)).toBe('999'); expect(fmtNum(1234)).toBe('1.2K'); expect(fmtNum(12345)).toBe('12K');
+    expect(fmtNum(1_234_567)).toBe('1.2M'); expect(fmtNum(1_000_000)).toBe('1M'); expect(fmtNum(2_500_000_000)).toBe('2.5B');
   });
 });

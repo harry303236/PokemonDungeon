@@ -59,6 +59,10 @@ export class VfxView {
     const d = this.scene.add.image(x, y, 'vfx-particles', P.scorch).setScale((r * 2) / 16).setDepth(0.6).setAlpha(0.8).setRotation(Math.random() * 6.28);
     this.scene.tweens.add({ targets: d, alpha: 0, delay: 3500, duration: 1500, onComplete: () => d.destroy() });
   }
+  private ring(x: number, y: number): void {
+    const ring = this.scene.add.image(x, y, 'vfx-particles', P.ring).setBlendMode(Phaser.BlendModes.ADD).setDepth(6).setScale(0.8);
+    this.scene.tweens.add({ targets: ring, scale: 2.2, alpha: 0, duration: 220, onComplete: () => ring.destroy() });
+  }
   /** Hit: impact ring + flash + sparks. */
   hit(x: number, y: number, big: boolean): void {
     const ring = this.scene.add.image(x, y, 'vfx-particles', P.ring).setBlendMode(Phaser.BlendModes.ADD).setDepth(6).setScale(1);
@@ -81,10 +85,17 @@ export class VfxView {
         live.add(e.id); const s = this.sprite(e.id, 'vfx-flamethrower-start', 5);
         const phase = this.beamPhase.get(e.id);
         if (!phase) { s.play('vfx-flamethrower-start'); this.beamPhase.set(e.id, 'start'); s.once('animationcomplete', () => { if (this.bound.get(e.id) === s) { s.play('vfx-flamethrower-loop'); this.beamPhase.set(e.id, 'loop'); } }); }
-        const a = player.rot + e.rot; const len = e.len ?? 300;
-        s.setOrigin(0.04, 0.5).setPosition(pv.x + Math.cos(a) * 8, pv.y + Math.sin(a) * 8).setRotation(a).setScale(len / 240, ((e.width ?? 22) * 3) / 128);
-        if (Math.random() < 0.5) { const d = Math.random() * len; this.smoke.emitParticleAt(pv.x + Math.cos(a) * d, pv.y + Math.sin(a) * d, 1); }
-        if (Math.random() < 0.6) { const d = len * (0.6 + Math.random() * 0.4); this.sparks.emitParticleAt(pv.x + Math.cos(a) * d, pv.y + Math.sin(a) * d, 1); }
+        const a = player.rot + e.rot; const full = e.len ?? 300; const reach = e.reach ?? full;
+        // mouth: a bit forward of the sprite centre and raised (sprite origin is at the feet-ish 0.62)
+        const mx = pv.x + Math.cos(a) * 14, my = pv.y + Math.sin(a) * 10 - 10;
+        const len = Math.max(8, reach - 10);
+        s.setOrigin(0.04, 0.5).setPosition(mx, my).setRotation(a).setScale(len / 240, ((e.width ?? 55) * 3) / 128);
+        const ex = mx + Math.cos(a) * len, ey = my + Math.sin(a) * len;
+        if (Math.random() < 0.5) { const d = Math.random() * len; this.smoke.emitParticleAt(mx + Math.cos(a) * d, my + Math.sin(a) * d, 1); }
+        if (reach < full - 4) { // wall hit: small ring + sparks at the contact point
+          this.sparks.emitParticleAt(ex, ey, 2);
+          if (Math.random() < 0.18) this.ring(ex, ey);
+        } else if (Math.random() < 0.6) { const d = len * (0.6 + Math.random() * 0.4); this.sparks.emitParticleAt(mx + Math.cos(a) * d, my + Math.sin(a) * d, 1); }
       } else if (e.kind === 'zone') {
         live.add(e.id); const s = this.sprite(e.id, 'vfx-fire-spin', 0.8); const v = pose(e);
         if (!s.anims.isPlaying) { s.play('vfx-fire-spin'); this.scorch(v.x, v.y, e.r * 0.9); }

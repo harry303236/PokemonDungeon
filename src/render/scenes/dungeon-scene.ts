@@ -216,7 +216,7 @@ export class DungeonScene extends Phaser.Scene {
     for (const e of this.sim.world.entities.values()) {
       if (e.dead) continue;
       if (e.kind === 'projectile' && e.team === 'player') { const v = this.pose(e); lights.push({ x: v.x, y: v.y, r: 90, a: 0.8 }); }
-      else if (e.kind === 'beam') { const a = this.sim.player.rot + e.rot; const L = e.len ?? 300; for (let k = 1; k <= 3; k++) lights.push({ x: pv.x + Math.cos(a) * L * k / 3.2, y: pv.y + Math.sin(a) * L * k / 3.2, r: 120 }); }
+      else if (e.kind === 'beam') { const a = this.sim.player.rot + e.rot; const L = e.reach ?? e.len ?? 300; for (let k = 1; k <= 3; k++) lights.push({ x: pv.x + Math.cos(a) * L * k / 3.2, y: pv.y + Math.sin(a) * L * k / 3.2, r: 120 }); }
       else if (e.kind === 'zone' || e.kind === 'blast') { const v = this.pose(e); lights.push({ x: v.x, y: v.y, r: e.r * 2.2, a: 0.9 }); }
     }
     const ex = this.sim.floor.exit; if (this.sim.exitOpen) lights.push({ x: (ex.cx + 0.5) * T, y: (ex.cy + 0.5) * T, r: 110, a: 0.8 });
@@ -254,8 +254,8 @@ export class DungeonScene extends Phaser.Scene {
     const isFloor = (x: number, y: number): boolean => x >= 0 && y >= 0 && x < f.w && y < f.h && f.tiles[y * f.w + x] !== WALL;
     const id = (k: string): number => N[k] ?? -1;
     const DECOR = ['decor-rock', 'decor-rock', 'decor-bones', 'decor-skull', 'decor-mushroom', 'decor-crystal', 'decor-embers'];
-    const GLOW: Record<string, number> = { 'decor-mushroom': 0x60ff90, 'decor-crystal': 0xff7020, 'decor-embers': 0xff5010 };
-    const ex = f.exit;
+    const GLOW: Record<string, number> = { 'decor-mushroom': 0xff8a30, 'decor-crystal': 0xff7020, 'decor-embers': 0xff5010 };
+    const ex = f.exit; const doorSet = new Set((f.doors ?? []).map((d) => d.y * f.w + d.x));
     const base: number[][] = []; const deco: number[][] = []; const glows: { x: number; y: number; c: number; r: number }[] = [];
     for (let y = 0; y < f.h; y++) {
       const row: number[] = []; const drow: number[] = [];
@@ -263,10 +263,11 @@ export class DungeonScene extends Phaser.Scene {
         let t = -1; let d = -1; const h = hash(x, y);
         if (isFloor(x, y)) {
           const k = h < 0.03 ? 'floor-lava' : h < 0.11 ? 'floor-cracked' : h < 0.5 ? 'floor-2' : 'floor-1';
-          t = id(k); if (k === 'floor-lava') glows.push({ x, y, c: 0xff5a10, r: 70 });
+          const door = doorSet.has(y * f.w + x) && id('doorway') >= 0;
+          t = door ? id('doorway') : id(k); if (!door && k === 'floor-lava') glows.push({ x, y, c: 0xff5a10, r: 70 });
           const edge = !isFloor(x, y - 1) || !isFloor(x - 1, y) || !isFloor(x + 1, y) || !isFloor(x, y + 1);
           if (x === ex.cx && y === ex.cy) d = id('exit-stairs');
-          else if (!edge && hash(y, x) < 0.05) { const dk = DECOR[Math.floor(hash(x + 7, y + 3) * DECOR.length)] ?? 'decor-rock'; d = id(dk); const gc = GLOW[dk]; if (gc) glows.push({ x, y, c: gc, r: 55 }); }
+          else if (!edge && !doorSet.has(y * f.w + x) && hash(y, x) < 0.05) { const dk = DECOR[Math.floor(hash(x + 7, y + 3) * DECOR.length)] ?? 'decor-rock'; d = id(dk); const gc = GLOW[dk]; if (gc) glows.push({ x, y, c: gc, r: 55 }); }
         } else if (isFloor(x, y + 1)) {
           const lava = h < 0.12; t = id(lava ? 'wall-face-lava' : 'wall-face'); if (lava) glows.push({ x, y, c: 0xff5a10, r: 60 });
         } else if ([[1, 0], [-1, 0], [0, -1]].some(([dx, dy]) => isFloor(x + (dx ?? 0), y + (dy ?? 0)))) t = id('wall-top');
@@ -395,7 +396,7 @@ export class DungeonScene extends Phaser.Scene {
       if (e.dead) continue;
       const v = this.pose(e);
       if (e.kind === 'projectile') this.fx.projectile(v.x, v.y, e.team === 'enemy');
-      else if (e.kind === 'beam') { const pv = this.pose(p); this.fx.beam(pv.x, pv.y, p.rot + e.rot, e.len ?? 300, e.width ?? 22); }
+      else if (e.kind === 'beam') { const pv = this.pose(p); this.fx.beam(pv.x, pv.y, p.rot + e.rot, e.reach ?? e.len ?? 300, e.width ?? 22); }
       else if (e.kind === 'zone') this.fx.zone(v.x, v.y, e.r);
       else if (e.kind === 'blast') { live.add(e.id); this.blasts.set(e.id, { x: v.x, y: v.y, r: e.r }); this.fx.telegraph(v.x, v.y, e.r); }
       else if ((e.kind === 'monster' || e.kind === 'player') && e.burn) this.fx.burnTick(v.x, v.y);
@@ -424,7 +425,7 @@ export class DungeonScene extends Phaser.Scene {
         case 'item': g.fillStyle(RARITY_COLOR[e.item?.rarity ?? 'common'] ?? 0xffffff).fillRect(v.x - 6, v.y - 6, 12, 12); g.lineStyle(1, 0x000000).strokeRect(v.x - 6, v.y - 6, 12, 12); break;
         case 'zone': g.fillStyle(0xff6020, 0.15).fillCircle(v.x, v.y, e.r); g.lineStyle(2, 0xff9040, 0.5).strokeCircle(v.x, v.y, e.r); break;
         case 'blast': { const k = 1 - (e.life ?? 0) / (e.delay ?? 0.4); g.lineStyle(2, 0xffe060).strokeCircle(v.x, v.y, e.r); g.fillStyle(0xff8020, 0.35).fillCircle(v.x, v.y, e.r * k); break; }
-        case 'beam': { const a = p.rot + e.rot; const len = e.len ?? 300; const pv = this.pose(p); g.lineStyle(e.width ?? 22, 0xff7020, 0.35).lineBetween(pv.x, pv.y, pv.x + Math.cos(a) * len, pv.y + Math.sin(a) * len);
+        case 'beam': { if (this.vfx) break; const a = p.rot + e.rot; const len = e.reach ?? e.len ?? 300; const pv = this.pose(p); g.lineStyle(e.width ?? 22, 0xff7020, 0.35).lineBetween(pv.x, pv.y, pv.x + Math.cos(a) * len, pv.y + Math.sin(a) * len);
           g.lineStyle((e.width ?? 22) / 3, 0xffe080, 0.6).lineBetween(pv.x, pv.y, pv.x + Math.cos(a) * len, pv.y + Math.sin(a) * len); break; }
         case 'projectile': g.fillStyle(e.team === 'player' ? 0xfff0b0 : 0x90c8ff).fillCircle(v.x, v.y, e.r * 0.7); break;
         case 'monster': {

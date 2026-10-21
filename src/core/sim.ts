@@ -74,6 +74,13 @@ export class Sim {
   /** Evolution buff for flamethrower beam: [lengthMult, widthMult]. TUNE */
   static beamBuff(stage: number): [number, number] { return ([[1, 1], [1.3, 1.6], [1.6, 2.2]] as [number, number][])[stage] ?? [1, 1]; }
 
+  /** Beam length clipped at the first wall tile (stepped ray). */
+  beamReach(x: number, y: number, a: number, len: number): number {
+    const cx = Math.cos(a), cy = Math.sin(a);
+    for (let d = 0; d < len; d += 6) if (isWall(this.floor, Math.floor((x + cx * d) / T), Math.floor((y + cy * d) / T))) return d;
+    return len;
+  }
+
   /** Debug: add levels (or jump to next evolution level). */
   debugLevelUp(toNextEvo = false): void {
     const pr = this.progress;
@@ -392,7 +399,7 @@ export class Sim {
           e.tickT += e.tick ?? 0.1;
           const m = moveData(e.moveId ?? 'flamethrower');
           const perTick = ((e.tick ?? 0.1) / (m.params.duration ?? 0.8)) * BALANCE.sustainedComp * (e.delay ?? 1);
-          const a = p.rot + e.rot; const cx = Math.cos(a), cy = Math.sin(a); const len = e.len ?? 300;
+          const a = p.rot + e.rot; const cx = Math.cos(a), cy = Math.sin(a); const len = this.beamReach(p.x, p.y, a, e.len ?? 300); e.reach = len;
           for (const t of this.hash.near(p.x + cx * len / 2, p.y + cy * len / 2, len / 2 + 40)) {
             const rx = t.x - p.x, ry = t.y - p.y; const along = rx * cx + ry * cy; const perp = Math.abs(-rx * cy + ry * cx);
             if (!t.dead && along > 0 && along < len && perp < (e.width ?? 22) / 2 + t.r) this.hit(p, t, m.id, perTick, e.mods, newChain(this.rootSeq++));

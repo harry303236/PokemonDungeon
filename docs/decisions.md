@@ -27,3 +27,11 @@
 - Lighting: darkness RenderTexture with soft radial light holes (erase), NOT Light2D. Mask is rendered at 1/4 resolution and upscaled (soft lights hide it); full-res mask cost ~75% FPS under software GL.
 - VFX: artist sheets in `public/assets/vfx` (vfx-index.json) drive ember/flamethrower(start→loop→end)/fire-spin/fire-blast(warn→explosion)/flame-charge; RIGHT-facing art rotated to cast dir. Shared particle sheet only as accents (spark/ember/smoke/ring/scorch/flash). If any sheet is missing, the old procedural Fx path is used.
 - Deviation: no dedicated doorway placement yet (tile exists in index, unused) — room/corridor junction detection deferred.
+
+## 2026-10-21 Polish pass (artist list)
+- Flamethrower width 22 → 55 px (2.5×, visual and hitbox scaled together). BALANCE: hits ~2.5× more targets in packs at the same per-tick damage; evolution width multipliers (×1.6 / ×2.2) still stack on top → Charizard beam is 121 px wide. Watch AoE DPS; candidate TUNE is lowering power 90→75 or the evo width mults.
+- Beam is now clipped at the first wall tile (sim `beamReach`): no more damage through walls; wall contact shows a small shared-sheet ring + sparks (no big swirl).
+- Beam art is anchored at the mouth (render-only offset from the sprite centre by facing); hit detection still originates at the player centre (≤14 px difference).
+- Out-of-room backdrop is near-black, almost static; lava is only shown in crack tiles (floor-lava / wall-face-lava) with pulsing glow.
+- Doorways: `findDoors` marks floor tiles on the ring just outside each room that belong to no room (corridor mouths); deterministic, tested. 2-wide corridors → 2 doorway tiles.
+- Orb numbers use fmtNum (1.2K/1M) and shrink to fit. The 1000000/1000000 in earlier screenshots came from the screenshot harness setting god-mode HP; normal play is untouched.

@@ -1,3 +1,4 @@
+import { fmtNum } from './format';
 import Phaser from 'phaser';
 import { ART, BAR_BASE, HUD_KEYS, iconKey } from './hud-art';
 import { HUD_FONT, PALETTE, PP_THEME, themeForType, type HudTheme } from './hud-theme';
@@ -55,7 +56,9 @@ class Orb {
     for (let i = 0; i <= steps; i++) { const x = cx - r + (2 * r * i) / steps; const y = level + Math.sin(time * 3 + i * 0.6) * r * 0.035; const dx = x - cx; const half = Math.sqrt(Math.max(0, r * r - dx * dx)); pts.push({ x, y: Math.max(y, cy - half) }); }
     for (let i = steps; i >= 0; i--) { const x = cx - r + (2 * r * i) / steps; const dx = x - cx; pts.push({ x, y: cy + Math.sqrt(Math.max(0, r * r - dx * dx)) }); }
     this.maskG.clear().fillStyle(0xffffff).fillPoints(pts, true);
-    this.text.setPosition(cx, cy + r * 0.15).setText(`${Math.ceil(cur)} / ${Math.round(max)}`).setFontSize(Math.round(15 * k));
+    // abbreviate big values, then shrink the font until the text fits inside the orb hole
+    let fsz = Math.round(15 * k); this.text.setPosition(cx, cy + r * 0.15).setText(`${fmtNum(Math.ceil(cur))} / ${fmtNum(max)}`).setFontSize(fsz);
+    while (this.text.width > r * 1.6 && fsz > 8) this.text.setFontSize(--fsz);
     this.label.setPosition(cx, cy + r * 1.38).setFontSize(Math.round(11 * k));
   }
 }

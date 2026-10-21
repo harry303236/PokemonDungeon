@@ -16,7 +16,7 @@ export class Environment {
 
   constructor(private scene: Phaser.Scene) {
     Environment.makeTextures(scene);
-    this.lava = scene.add.tileSprite(0, 0, 16, 16, LAVA).setOrigin(0).setDepth(-2).setTint(0x9a7a6a);
+    this.lava = scene.add.tileSprite(0, 0, 16, 16, LAVA).setOrigin(0).setDepth(-2).setTint(0x403030); // near-black backdrop (~25% max)
     this.glow = scene.add.tileSprite(0, 0, 16, 16, LAVA_GLOW).setOrigin(0).setDepth(-1).setBlendMode(Phaser.BlendModes.ADD);
     this.stamp = scene.make.image({ key: LIGHT }, false);
     this.embers = scene.add.particles(0, 0, 'flare', {
@@ -29,8 +29,8 @@ export class Environment {
   setBounds(w: number, h: number): void { this.lava.setSize(w, h); this.glow.setSize(w, h); }
 
   update(time: number, dt: number, cam: Phaser.Cameras.Scene2D.Camera, lights: Light[]): void {
-    this.lava.tilePositionX = time * 6; this.lava.tilePositionY = time * 3.5;
-    this.glow.tilePositionX = -time * 9; this.glow.tilePositionY = time * 5; this.glow.setAlpha(0.35 + 0.15 * Math.sin(time * 1.7));
+    this.lava.tilePositionX = time * 1.2; this.lava.tilePositionY = time * 0.7; // barely moving
+    this.glow.setVisible(false); // lava lives in crack tiles only now
     // embers drift up anywhere in view (mostly visible over the lava)
     const v = cam.worldView; const n = Math.random() < dt * 28 ? 1 : 0;
     if (n) this.embers.emitParticleAt(v.x + Math.random() * v.width, v.y + v.height * (0.3 + Math.random() * 0.8), 1);

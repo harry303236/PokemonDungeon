@@ -1,6 +1,6 @@
 [
  {"id":"ember","type":"fire","category":"special","power":40,"pp":25,"shape":"projectile","params":{"speed":520,"range":420,"radius":8,"cooldownOverride":0.35,"energy":0},"status":{"id":"burn","chance":10,"duration":4}},
- {"id":"flamethrower","type":"fire","category":"special","power":90,"pp":15,"shape":"beam","params":{"length":300,"width":22,"duration":0.8,"tick":0.1},"status":{"id":"burn","chance":10,"duration":4}},
+ {"id":"flamethrower","type":"fire","category":"special","power":90,"pp":15,"shape":"beam","params":{"length":300,"width":55,"duration":0.8,"tick":0.1},"status":{"id":"burn","chance":10,"duration":4}},
  {"id":"fire-spin","type":"fire","category":"special","power":35,"pp":15,"shape":"zone","params":{"r":80,"duration":4,"tick":0.5}},
  {"id":"fire-blast","type":"fire","category":"special","power":110,"pp":5,"shape":"aoe-target","params":{"r":110,"maxRange":380,"delay":0.4},"status":{"id":"burn","chance":10,"duration":4}},
  {"id":"flare-blitz","type":"fire","category":"physical","power":120,"pp":15,"shape":"dash","params":{"distance":220,"speed":1100,"width":48,"recoil":0.333}},

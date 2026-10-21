@@ -16,7 +16,7 @@ export interface Entity {
   monsterId?: string; ai?: { cd: number; windup: number; state: 'idle' | 'chase' | 'attack' }; isBoss?: boolean;
   // damage carriers
   moveId?: string; life?: number; tick?: number; tickT?: number; hitSet?: Set<number>; pierce?: number;
-  len?: number; width?: number; delay?: number; mods?: MoveMods;
+  len?: number; width?: number; /** beam: current reach after wall clipping */ reach?: number; delay?: number; mods?: MoveMods;
   // dash
   dash?: { t: number; dirX: number; dirY: number; speed: number; hit: boolean; moveId?: string };
   // loot

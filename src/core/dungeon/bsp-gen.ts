@@ -1,6 +1,6 @@
 import type { Rng } from '../rng';
 export interface Room { x: number; y: number; w: number; h: number; cx: number; cy: number }
-export interface FloorMap { w: number; h: number; tiles: Uint8Array; rooms: Room[]; start: Room; exit: Room }
+export interface FloorMap { w: number; h: number; tiles: Uint8Array; rooms: Room[]; start: Room; exit: Room; /** floor tiles where a corridor enters a room (just outside the room rect) */ doors: { x: number; y: number }[] }
 export const WALL = 0;
 export const FLOOR = 1;
 
@@ -48,7 +48,27 @@ export function generateFloor(rng: Rng, w = 72, h = 54): FloorMap {
   if (!start) throw new Error('no rooms');
   let exit = start; let best = -1;
   for (const r of rooms) { const d = Math.hypot(r.cx - start.cx, r.cy - start.cy); if (d > best) { best = d; exit = r; } }
-  return { w, h, tiles, rooms, start, exit };
+  return { w, h, tiles, rooms, start, exit, doors: findDoors(w, h, tiles, rooms) };
 }
 export const isWall = (f: FloorMap, tx: number, ty: number): boolean =>
   tx < 0 || ty < 0 || tx >= f.w || ty >= f.h || f.tiles[ty * f.w + tx] === WALL;
+
+/** Room/corridor boundary: floor tiles on the 1-tile ring around a room (no corners) that lie in no room. Deterministic (scan order). */
+export function findDoors(w: number, h: number, tiles: Uint8Array, rooms: Room[]): { x: number; y: number }[] {
+  const inRoom = (x: number, y: number): boolean => rooms.some((r) => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h);
+  const seen = new Set<number>(); const out: { x: number; y: number }[] = [];
+  const ok = (x: number, y: number): boolean => x > 0 && y > 0 && x < w - 1 && y < h - 1 && tiles[y * w + x] === FLOOR && !inRoom(x, y);
+  // Walk each side of the ring; a door is a short run (<= 3 tiles) of corridor floor. Longer runs = a corridor hugging the wall, not an entrance.
+  const side = (pts: [number, number][]): void => {
+    let run: [number, number][] = [];
+    const flush = (): void => { if (run.length && run.length <= 3) for (const [x, y] of run) { const i = y * w + x; if (!seen.has(i)) { seen.add(i); out.push({ x, y }); } } run = []; };
+    for (const [x, y] of pts) { if (ok(x, y)) run.push([x, y]); else flush(); }
+    flush();
+  };
+  for (const r of rooms) {
+    const xs = Array.from({ length: r.w }, (_, i) => r.x + i), ys = Array.from({ length: r.h }, (_, i) => r.y + i);
+    side(xs.map((x) => [x, r.y - 1])); side(xs.map((x) => [x, r.y + r.h]));
+    side(ys.map((y) => [r.x - 1, y])); side(ys.map((y) => [r.x + r.w, y]));
+  }
+  return out;
+}
