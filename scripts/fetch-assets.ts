@@ -55,8 +55,10 @@ async function fetchSpecies(id: string, dex: number): Promise<SkinEntry | null> 
   return { source: 'pokeapi', anims: { walk: { file: `${id}/static.png`, frameWidth: 96, frameHeight: 96, durations: [1] } } };
 }
 
+/** The CC0 tileset is committed (and recolored for the volcano look) — never overwrite it.
+ *  Only restores the original Kenney sheet if the file is missing entirely (e.g. a broken checkout). */
 async function fetchTileset(): Promise<void> {
-  if (existsSync(M.tileset.dest) && !force) return;
+  if (existsSync(M.tileset.dest)) return;
   const html = (await get(M.tileset.page))?.toString('utf8') ?? '';
   const url = /https:\/\/kenney\.nl\/media\/pages\/assets\/[^"']+\.zip/.exec(html)?.[0];
   if (!url) { console.warn('tileset: zip link not found; game falls back to procedural tiles'); return; }
@@ -68,7 +70,7 @@ async function fetchTileset(): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  if (ifMissing && !force && existsSync(join(M.skinDir, 'manifest.json')) && existsSync(M.tileset.dest)) {
+  if (ifMissing && !force && existsSync(join(M.skinDir, 'manifest.json'))) {
     const have = JSON.parse(readFileSync(join(M.skinDir, 'manifest.json'), 'utf8')) as { species?: Record<string, unknown> };
     if (Object.keys(M.species).every((id) => have.species?.[id])) { console.log('[fetch-assets] skin cached, skipping'); return; }
   }

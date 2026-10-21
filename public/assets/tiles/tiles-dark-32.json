@@ -1,0 +1,25 @@
+{
+ "tileSize": 32,
+ "columns": 8,
+ "tiles": {
+  "floor-1": 0,
+  "floor-2": 1,
+  "floor-cracked": 2,
+  "floor-lava": 3,
+  "wall-top": 4,
+  "wall-face": 5,
+  "wall-face-lava": 6,
+  "corner-tl": 7,
+  "corner-tr": 8,
+  "corner-bl": 9,
+  "corner-br": 10,
+  "doorway": 11,
+  "exit-stairs": 12,
+  "decor-rock": 13,
+  "decor-bones": 14,
+  "decor-skull": 15,
+  "decor-mushroom": 16,
+  "decor-crystal": 17,
+  "decor-embers": 18
+ }
+}

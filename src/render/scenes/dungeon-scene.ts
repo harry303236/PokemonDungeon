@@ -1,11 +1,13 @@
 import Phaser from 'phaser';
+import { Environment, FpsMeter, type Light } from '../views/environment';
+import { VfxAssets, VfxView } from '../views/vfx-view';
 import { Sim, MAX_FLOOR, xpToNext, type Progress } from '../../core/sim';
 import { BALANCE } from '../../core/balance';
 import { WALL } from '../../core/dungeon/bsp-gen';
 import { clampToFloor } from '../../core/dungeon/pathfind';
 import { monster as monsterData, move as moveData } from '../../data/registry';
 import { moveCooldown } from '../../core/moves/cooldown';
-import { SpriteProvider, TILESET_KEY, type AnimName } from '../views/sprite-provider';
+import { SpriteProvider, TILESET_KEY, DARK_TILES_KEY, type AnimName } from '../views/sprite-provider';
 import { renderPose } from '../views/render-pose';
 import { Fx } from '../views/fx';
 import { SkillPanelView } from '../views/skill-panel-view';
@@ -56,6 +58,11 @@ export class DungeonScene extends Phaser.Scene {
   private pending: { moveTo?: { x: number; y: number }; attackTarget?: number } = {};
   private lmb: { mode: 'ground' | 'attack' | 'force'; since: number } | null = null;
   private marker: { x: number; y: number; t: number } | null = null;
+  private env!: Environment;
+  private vfx: VfxView | null = null;
+  private glowSpots: { img: Phaser.GameObjects.Image; x: number; y: number; ph: number; r: number }[] = [];
+  private fpsMeter = new FpsMeter();
+  private fpsText!: Phaser.GameObjects.Text;
 
   constructor() { super('dungeon'); }
 
@@ -66,6 +73,12 @@ export class DungeonScene extends Phaser.Scene {
     this.g = this.add.graphics().setDepth(1);
     this.bars = this.add.graphics().setDepth(7);
     this.fx = new Fx(this);
+    this.env = new Environment(this);
+    this.vfx = VfxAssets.ok ? new VfxView(this) : null;
+    this.fpsText = this.add.text(16, 56, '', { fontFamily: 'monospace', fontSize: '13px', color: '#9cff9c', backgroundColor: 'rgba(0,0,0,0.6)', padding: { x: 6, y: 4 } }).setScrollFactor(0).setDepth(60).setVisible(false);
+    this.input.keyboard?.on('keydown-F3', (ev: KeyboardEvent) => { ev.preventDefault(); this.fpsText.setVisible(!this.fpsText.visible); });
+    (window as unknown as { __fps?: () => unknown; __env?: Environment }).__fps = () => this.fpsMeter.stats();
+    (window as unknown as { __env?: Environment }).__env = this.env;
     this.hud = this.add.graphics().setScrollFactor(0).setDepth(10);
     this.hudText = this.add.text(16, 0, '', { fontFamily: HUD_FONT, fontSize: '15px', color: PALETTE.text, stroke: PALETTE.shadow, strokeThickness: 4 }).setScrollFactor(0).setDepth(11);
     this.hudBar = new Hud(this);
@@ -76,7 +89,7 @@ export class DungeonScene extends Phaser.Scene {
     this.skills = new SkillPanelView(() => this.sim, () => saveProgress(this.sim.progress));
     this.events.once('shutdown', () => { this.inv.destroy(); this.skills.destroy(); });
     const kb = this.input.keyboard;
-    kb?.addCapture('TAB,F1');
+    kb?.addCapture('TAB,F1,F3');
     (['Q', 'W', 'E', 'R'] as const).forEach((key, i) => kb?.on(`keydown-${key}`, (ev: KeyboardEvent) => { if (!ev.repeat && !this.uiOpen()) this.taps.press(i + 1); }));
     this.input.on('pointerdown', (ptr: Phaser.Input.Pointer) => { if ((ptr.button === 2 || ptr.rightButtonDown()) && !this.uiOpen()) this.taps.press(0); });
     kb?.on('keydown-ONE', () => { if (!this.uiOpen()) this.sim.usePotion(0); });
@@ -146,7 +159,7 @@ export class DungeonScene extends Phaser.Scene {
       const tgt = this.sim.world.get(e.target);
       this.hurtUntil.set(e.target, this.now + 0.25);
       const big = e.isCrit || e.typeEff > 1 || (!!tgt?.maxHp && e.amount >= tgt.maxHp * 0.2);
-      this.fx.hit(e.x, e.y + 8, big);
+      if (this.vfx) this.vfx.hit(e.x, e.y + 8, big); else this.fx.hit(e.x, e.y + 8, big);
       if (big || e.target === this.sim.player.id) this.cameras.main.shake(110, e.target === this.sim.player.id ? 0.006 : 0.004);
       const txt = this.add.text(e.x + Phaser.Math.Between(-8, 8), e.y, String(e.amount), { fontFamily: HUD_FONT, fontSize: `${size}px`, color, stroke: PALETTE.shadow, strokeThickness: 4 }).setOrigin(0.5).setDepth(5);
       this.tweens.add({ targets: txt, y: e.y - 36, alpha: 0, duration: 700, onComplete: () => txt.destroy() });
@@ -194,12 +207,36 @@ export class DungeonScene extends Phaser.Scene {
     this.focusCamera();
     this.drawEntities();
     this.drawHud(deltaMs / 1000);
+    this.updateEnv(deltaMs / 1000);
+  }
+
+  private updateEnv(dt: number): void {
+    const t = this.now; const lights: Light[] = [];
+    const pv = this.pose(this.sim.player); lights.push({ x: pv.x, y: pv.y, r: 260 });
+    for (const e of this.sim.world.entities.values()) {
+      if (e.dead) continue;
+      if (e.kind === 'projectile' && e.team === 'player') { const v = this.pose(e); lights.push({ x: v.x, y: v.y, r: 90, a: 0.8 }); }
+      else if (e.kind === 'beam') { const a = this.sim.player.rot + e.rot; const L = e.len ?? 300; for (let k = 1; k <= 3; k++) lights.push({ x: pv.x + Math.cos(a) * L * k / 3.2, y: pv.y + Math.sin(a) * L * k / 3.2, r: 120 }); }
+      else if (e.kind === 'zone' || e.kind === 'blast') { const v = this.pose(e); lights.push({ x: v.x, y: v.y, r: e.r * 2.2, a: 0.9 }); }
+    }
+    const ex = this.sim.floor.exit; if (this.sim.exitOpen) lights.push({ x: (ex.cx + 0.5) * T, y: (ex.cy + 0.5) * T, r: 110, a: 0.8 });
+    const v = this.cameras.main.worldView;
+    for (const g of this.glowSpots) {
+      const k = 0.55 + 0.45 * Math.sin(t * 2.4 + g.ph); g.img.setAlpha(k * 0.55);
+      if (g.x > v.x - 80 && g.x < v.right + 80 && g.y > v.y - 80 && g.y < v.bottom + 80) lights.push({ x: g.x, y: g.y, r: g.r, a: 0.35 + 0.35 * k });
+    }
+    this.env.update(t, dt, this.cameras.main, lights);
+    if (dt > 0) this.fpsMeter.push(t, 1 / dt);
+    if (this.fpsText.visible) { const st = this.fpsMeter.stats(); this.fpsText.setText(`FPS ${this.game.loop.actualFps.toFixed(0)}  avg ${st.avg.toFixed(0)}  min ${st.min.toFixed(0)} (10s)  [F3]`); }
   }
 
   private drawMap(): void {
     const f = this.sim.floor; const g = this.mapG; g.clear();
     this.drawnFloor = this.sim.floorNo;
     this.tileLayers.forEach((l) => l.tilemap.destroy()); this.tileLayers = [];
+    this.glowSpots.forEach((g) => g.img.destroy()); this.glowSpots = [];
+    this.env.setBounds(f.w * T, f.h * T);
+    if (SpriteProvider.darkTiles) { this.buildDarkTilemap(SpriteProvider.darkTiles); return; }
     if (SpriteProvider.tiles) { this.buildTilemap(); return; }
     for (let y = 0; y < f.h; y++) for (let x = 0; x < f.w; x++) {
       const wall = f.tiles[y * f.w + x] === WALL;
@@ -207,6 +244,51 @@ export class DungeonScene extends Phaser.Scene {
         const nearFloor = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => f.tiles[(y + (dy ?? 0)) * f.w + x + (dx ?? 0)] === 1);
         if (nearFloor) { g.fillStyle(0x4a3b33).fillRect(x * T, y * T, T, T); g.fillStyle(0x5c4a40).fillRect(x * T, y * T, T, 6); }
       } else { g.fillStyle((x + y) % 2 ? 0x2a2420 : 0x2e2723).fillRect(x * T, y * T, T, T); }
+    }
+  }
+
+  /** Artist 32px volcanic tileset (tiles-dark-32.json names). Void stays empty so the lava layer shows. */
+  private buildDarkTilemap(N: Record<string, number>): void {
+    const f = this.sim.floor;
+    const hash = (x: number, y: number): number => { let h = (x * 374761393 + y * 668265263 + this.sim.floorNo * 982451653) | 0; h = (h ^ (h >>> 13)) * 1274126177; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+    const isFloor = (x: number, y: number): boolean => x >= 0 && y >= 0 && x < f.w && y < f.h && f.tiles[y * f.w + x] !== WALL;
+    const id = (k: string): number => N[k] ?? -1;
+    const DECOR = ['decor-rock', 'decor-rock', 'decor-bones', 'decor-skull', 'decor-mushroom', 'decor-crystal', 'decor-embers'];
+    const GLOW: Record<string, number> = { 'decor-mushroom': 0x60ff90, 'decor-crystal': 0xff7020, 'decor-embers': 0xff5010 };
+    const ex = f.exit;
+    const base: number[][] = []; const deco: number[][] = []; const glows: { x: number; y: number; c: number; r: number }[] = [];
+    for (let y = 0; y < f.h; y++) {
+      const row: number[] = []; const drow: number[] = [];
+      for (let x = 0; x < f.w; x++) {
+        let t = -1; let d = -1; const h = hash(x, y);
+        if (isFloor(x, y)) {
+          const k = h < 0.03 ? 'floor-lava' : h < 0.11 ? 'floor-cracked' : h < 0.5 ? 'floor-2' : 'floor-1';
+          t = id(k); if (k === 'floor-lava') glows.push({ x, y, c: 0xff5a10, r: 70 });
+          const edge = !isFloor(x, y - 1) || !isFloor(x - 1, y) || !isFloor(x + 1, y) || !isFloor(x, y + 1);
+          if (x === ex.cx && y === ex.cy) d = id('exit-stairs');
+          else if (!edge && hash(y, x) < 0.05) { const dk = DECOR[Math.floor(hash(x + 7, y + 3) * DECOR.length)] ?? 'decor-rock'; d = id(dk); const gc = GLOW[dk]; if (gc) glows.push({ x, y, c: gc, r: 55 }); }
+        } else if (isFloor(x, y + 1)) {
+          const lava = h < 0.12; t = id(lava ? 'wall-face-lava' : 'wall-face'); if (lava) glows.push({ x, y, c: 0xff5a10, r: 60 });
+        } else if ([[1, 0], [-1, 0], [0, -1]].some(([dx, dy]) => isFloor(x + (dx ?? 0), y + (dy ?? 0)))) t = id('wall-top');
+        else if (isFloor(x + 1, y + 1)) t = id('corner-tl');
+        else if (isFloor(x - 1, y + 1)) t = id('corner-tr');
+        else if (isFloor(x + 1, y - 1)) t = id('corner-bl');
+        else if (isFloor(x - 1, y - 1)) t = id('corner-br');
+        row.push(t); drow.push(d);
+      }
+      base.push(row); deco.push(drow);
+    }
+    for (const [data, depth] of [[base, 0], [deco, 0.5]] as const) {
+      const map = this.make.tilemap({ data: data as number[][], tileWidth: 32, tileHeight: 32 });
+      const ts = map.addTilesetImage(DARK_TILES_KEY, DARK_TILES_KEY, 32, 32, 0, 0);
+      if (!ts) continue;
+      const layer = map.createLayer(0, ts, 0, 0);
+      if (layer) { layer.setScale(T / 32).setDepth(depth); this.tileLayers.push(layer); }
+    }
+    for (const g of glows) {
+      const cx = (g.x + 0.5) * T, cy = (g.y + 0.5) * T;
+      const img = this.add.image(cx, cy, 'env-light').setTint(g.c).setBlendMode(Phaser.BlendModes.ADD).setScale((g.r * 1.1) / 256).setDepth(0.7);
+      this.glowSpots.push({ img, x: cx, y: cy, ph: hash(g.x + 11, g.y) * 6.28, r: g.r * 2.2 });
     }
   }
 
@@ -297,6 +379,18 @@ export class DungeonScene extends Phaser.Scene {
 
   private emitFx(): void {
     const s = this.sim; const p = s.player; const live = new Set<number>();
+    if (this.vfx) {
+      this.vfx.sync(s.world.entities.values(), p, (e) => this.pose(e));
+      for (const e of s.world.entities.values()) {
+        if (e.dead) continue;
+        if (e.kind === 'projectile' && e.team === 'enemy') { const v = this.pose(e); this.fx.projectile(v.x, v.y, true); }
+        else if (e.kind === 'blast') live.add(e.id);
+        else if ((e.kind === 'monster' || e.kind === 'player') && e.burn) { const v = this.pose(e); this.fx.burnTick(v.x, v.y); }
+      }
+      for (const e of s.world.entities.values()) if (e.kind === 'blast' && !e.dead) this.blasts.set(e.id, { x: e.x, y: e.y, r: e.r });
+      for (const [id] of this.blasts) if (!live.has(id)) { this.cameras.main.shake(160, 0.008); this.blasts.delete(id); }
+      return;
+    }
     for (const e of s.world.entities.values()) {
       if (e.dead) continue;
       const v = this.pose(e);

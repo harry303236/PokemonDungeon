@@ -5,6 +5,7 @@ export interface SkinManifest { version: number; species: Record<string, { sourc
 export type AnimName = 'idle' | 'walk' | 'attack' | 'hurt';
 
 const SKIN_BASE = 'assets/skin/';
+export const DARK_TILES_KEY = 'tiles-dark-32';
 export const TILESET_KEY = 'tiles';
 export const TILESET_URL = 'assets/cc0/kenney-roguelike-caves/tiles.png';
 
@@ -12,6 +13,8 @@ export const TILESET_URL = 'assets/cc0/kenney-roguelike-caves/tiles.png';
 export class SpriteProvider {
   static manifest: SkinManifest | null = null;
   static tiles = false;
+  /** Artist 32px tileset name->frame index (tiles-dark-32.json), null = fall back to Kenney. */
+  static darkTiles: Record<string, number> | null = null;
   private static rows = new Map<string, number>();
 
   static queueSkin(scene: Phaser.Scene, m: SkinManifest): void {

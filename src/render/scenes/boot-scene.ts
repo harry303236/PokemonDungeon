@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { queueHudArt, queueHudIcons, generateHudTextures } from '../hud/hud-art';
-import { SpriteProvider, TILESET_KEY, TILESET_URL, type SkinManifest } from '../views/sprite-provider';
+import { VfxAssets } from '../views/vfx-view';
+import { SpriteProvider, TILESET_KEY, TILESET_URL, DARK_TILES_KEY, type SkinManifest } from '../views/sprite-provider';
 
 /** Loads optional skin (sprites) + CC0 tileset. Missing files are tolerated -> placeholder rendering. */
 export class BootScene extends Phaser.Scene {
@@ -10,6 +11,9 @@ export class BootScene extends Phaser.Scene {
     this.load.text('skin-manifest', 'assets/skin/manifest.json'); // text, so an SPA 404 fallback page can't throw
     queueHudArt(this);
     this.load.spritesheet(TILESET_KEY, TILESET_URL, { frameWidth: 16, frameHeight: 16, spacing: 1 });
+    this.load.spritesheet(DARK_TILES_KEY, 'assets/tiles/tiles-dark-32.png', { frameWidth: 32, frameHeight: 32 });
+    this.load.json(DARK_TILES_KEY, 'assets/tiles/tiles-dark-32.json');
+    VfxAssets.queueIndex(this);
   }
   create(): void {
     this.makeFxTextures();
@@ -18,9 +22,13 @@ export class BootScene extends Phaser.Scene {
     if (SpriteProvider.tiles) this.textures.get(TILESET_KEY).setFilter(Phaser.Textures.FilterMode.NEAREST);
     let m: SkinManifest | undefined;
     try { m = JSON.parse(String(this.cache.text.get('skin-manifest') ?? '')) as SkinManifest; } catch { console.info('[skin] no skin manifest; using placeholders'); }
+    const dj = this.cache.json.get(DARK_TILES_KEY) as { tiles?: Record<string, number> } | undefined;
+    SpriteProvider.darkTiles = this.textures.exists(DARK_TILES_KEY) && dj?.tiles ? dj.tiles : null;
+    if (SpriteProvider.darkTiles) this.textures.get(DARK_TILES_KEY).setFilter(Phaser.Textures.FilterMode.NEAREST);
+    VfxAssets.queueSheets(this);
     queueHudIcons(this);
     if (m?.species) SpriteProvider.queueSkin(this, m);
-    this.load.once('complete', () => { SpriteProvider.createAnims(this); this.scene.start('title'); });
+    this.load.once('complete', () => { SpriteProvider.createAnims(this); VfxAssets.createAnims(this); this.scene.start('title'); });
     this.load.start();
   }
   private makeFxTextures(): void {

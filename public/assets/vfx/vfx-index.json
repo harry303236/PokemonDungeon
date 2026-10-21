@@ -1,0 +1,64 @@
+{
+ "ember": {
+  "file": "vfx-ember.png",
+  "frameWidth": 128,
+  "frameHeight": 128,
+  "frames": 8
+ },
+ "flamethrower-start": {
+  "file": "vfx-flamethrower-start.png",
+  "frameWidth": 256,
+  "frameHeight": 128,
+  "frames": 6
+ },
+ "flamethrower-loop": {
+  "file": "vfx-flamethrower-loop.png",
+  "frameWidth": 256,
+  "frameHeight": 128,
+  "frames": 8
+ },
+ "flamethrower-end": {
+  "file": "vfx-flamethrower-end.png",
+  "frameWidth": 256,
+  "frameHeight": 128,
+  "frames": 6
+ },
+ "fire-spin": {
+  "file": "vfx-fire-spin.png",
+  "frameWidth": 128,
+  "frameHeight": 128,
+  "frames": 12
+ },
+ "fire-blast-warn": {
+  "file": "vfx-fire-blast-warn.png",
+  "frameWidth": 256,
+  "frameHeight": 256,
+  "frames": 8
+ },
+ "fire-blast": {
+  "file": "vfx-fire-blast.png",
+  "frameWidth": 256,
+  "frameHeight": 256,
+  "frames": 12
+ },
+ "flame-charge": {
+  "file": "vfx-flame-charge.png",
+  "frameWidth": 128,
+  "frameHeight": 128,
+  "frames": 8
+ },
+ "particles": {
+  "file": "vfx-particles.png",
+  "frameWidth": 16,
+  "frameHeight": 16,
+  "frames": 6,
+  "order": [
+   "spark",
+   "ember",
+   "smoke",
+   "ring",
+   "scorch",
+   "flash"
+  ]
+ }
+}
