@@ -9,3 +9,8 @@
 - ADR-022: Kenney assets not added (Q19): all visuals are procedural shapes.
 - ADR-023: Evolution buffs flamethrower beam (length ×1.3/width ×1.6 at Lv16; ×1.6/×2.2 at Lv36, TUNE). Debug hotkeys L / Shift+L for playtesting.
 - ADR-024: Skin layer — PMD SpriteCollab sprites auto-fetched (postinstall/predev/prebuild, cached, git-ignored); Kenney CC0 tileset committed; placeholder shapes only as fallback. Phaser particle FX, white hit-flash, camera shake on big hits/explosions.
+- ADR-025 (director override): Basic attack is a slottable move. 5 hotbar slots (RMB, Q, W, E, R) hold basic + up to 4 non-basic moves (`core/moves/loadout.ts`).
+  - Conflict with 04 §5.1 ("basic does not occupy a slot", slots 1–4) and 07 Q9 ("basic not swappable"): director decision wins; ember is still the only basic, but it can be moved/unslotted.
+  - Conflict with 01/AGENTS WASD movement: W is now a skill key. Resolution: Diablo-style hold-LMB-to-move toward cursor + arrow keys; WASD movement dropped. TODO: key rebinding in settings (M5).
+  - Conflict with 04 §5.1 "moves can only be swapped in town/campfire": MVP has no hub/campfire, so rebinding is allowed anywhere (sim input is blocked while the panel is open). Revisit when campfires exist.
+  - Rebinding UI: Tab skill panel (also opens with inventory), HTML5 drag-and-drop onto slots (swap if already slotted) plus click-to-pick; right-click clears a slot. Slots persist in save (missing/invalid -> default).

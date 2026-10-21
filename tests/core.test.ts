@@ -88,7 +88,7 @@ describe('sim smoke', () => {
       const ex = sim.floor.exit; const goal = sim.exitOpen ? { x: (ex.cx + 0.5) * 32, y: (ex.cy + 0.5) * 32 } : tgt ?? p;
       if (Math.hypot(goal.x - p.x, goal.y - p.y) > 150 || sim.exitOpen) { p.x += (goal.x - p.x) * 0.05; p.y += (goal.y - p.y) * 0.05; }
       p.hp = p.maxHp; // invulnerable bot
-      const cmd: InputCommand = { moveX: 0, moveY: 0, aimX: tgt?.x ?? 0, aimY: tgt?.y ?? 0, basic: true, slots: [f % 7 === 0, f % 11 === 0, f % 13 === 0, false], dodge: false };
+      const cmd: InputCommand = { moveX: 0, moveY: 0, aimX: tgt?.x ?? 0, aimY: tgt?.y ?? 0, slots: [true, f % 7 === 0, f % 11 === 0, f % 13 === 0, false], dodge: false };
       sim.step(1 / 60, cmd);
     }
     expect(cleared).toBeGreaterThanOrEqual(2); expect(sim.floorNo).toBeGreaterThanOrEqual(3); expect(sim.progress.level).toBeGreaterThan(5);
@@ -115,4 +115,26 @@ describe('evolution move buff', () => {
     expect(b2.len).toBeGreaterThan(b1.len); expect(b2.width).toBeGreaterThan(b1.width);
   });
   it('L adds exactly one level', () => { const sim = new Sim(newProgress(5)); sim.debugLevelUp(); expect(sim.progress.level).toBe(6); });
+});
+
+import { assignSlot, validateSlots, DEFAULT_SLOTS } from '../src/core/moves/loadout';
+describe('hotbar loadout', () => {
+  it('default is valid; basic is slottable anywhere', () => {
+    expect(validateSlots(DEFAULT_SLOTS).ok).toBe(true);
+    const s = assignSlot(DEFAULT_SLOTS, 4, 'ember'); expect(s[4]).toBe('ember'); expect(s[0]).toBe('flare-blitz');
+  });
+  it('swaps instead of duplicating, and allows clearing', () => {
+    const s = assignSlot(DEFAULT_SLOTS, 1, 'fire-blast'); expect(s[1]).toBe('fire-blast'); expect(s[3]).toBe('flamethrower');
+    expect(assignSlot(DEFAULT_SLOTS, 2, null)[2]).toBeNull();
+  });
+  it('rejects >4 non-basic, duplicates, unknown moves', () => {
+    expect(validateSlots(['flamethrower', 'fire-spin', 'fire-blast', 'flare-blitz', 'flamethrower']).ok).toBe(false);
+    expect(validateSlots(['ember', 'hyper-beam', null, null, null]).ok).toBe(false);
+    expect(assignSlot(DEFAULT_SLOTS, 0, 'hyper-beam')).toBe(DEFAULT_SLOTS);
+  });
+  it('sim casts whatever is in the slot', () => {
+    const sim = new Sim(newProgress(3)); sim.setSlot(0, 'fire-blast');
+    sim.step(1 / 60, { moveX: 0, moveY: 0, aimX: sim.player.x + 50, aimY: sim.player.y, slots: [true, false, false, false, false], dodge: false });
+    expect(sim.cooldownLeft('fire-blast')).toBeGreaterThan(7);
+  });
 });

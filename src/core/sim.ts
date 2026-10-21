@@ -6,21 +6,21 @@ import { generateFloor, isWall, type FloorMap } from './dungeon/bsp-gen';
 import { calcStats, xpToNext } from './stats/stat-calc';
 import { calcDamage } from './combat/damage';
 import { moveCooldown, energyCost } from './moves/cooldown';
+import { BASIC_MOVE, DEFAULT_SLOTS, assignSlot, validateSlots, type Slots } from './moves/loadout';
 import { rollItem, canEquip, type Item, type ItemSlot } from './loot/loot-roller';
 import { monster as monsterData, move as moveData, species as speciesData, MONSTERS } from '../data/registry';
 
 export interface InputCommand {
   moveX: number; moveY: number; aimX: number; aimY: number; // aim in world px
-  basic: boolean; slots: [boolean, boolean, boolean, boolean]; dodge: boolean;
+  slots: boolean[]; dodge: boolean; // slots: RMB, Q, W, E, R
 }
 export interface Progress {
   level: number; xp: number; inventory: Item[]; equipped: Partial<Record<ItemSlot, Item>>;
-  bestFloor: number; nextUid: number; seed: number;
+  bestFloor: number; nextUid: number; seed: number; slots?: Slots;
 }
 export const newProgress = (seed: number): Progress => ({ level: 5, xp: 0, inventory: [], equipped: {}, bestFloor: 1, nextUid: 1, seed });
 
-export const LOADOUT = ['flamethrower', 'fire-spin', 'fire-blast', 'flare-blitz'] as const;
-export const BASIC = 'ember';
+export const BASIC = BASIC_MOVE;
 export const MAX_FLOOR = 5;
 const T = BALANCE.TILE;
 
@@ -46,6 +46,7 @@ export class Sim {
   private rootSeq = 1;
 
   constructor(public progress: Progress) {
+    if (!progress.slots || !validateSlots(progress.slots).ok) progress.slots = [...DEFAULT_SLOTS];
     this.rng = new Rng(progress.seed);
     this.loadFloor(1);
   }
@@ -146,8 +147,14 @@ export class Sim {
     }
     const len = Math.hypot(cmd.moveX, cmd.moveY);
     if (len > 0) { const sp = (p.stats?.moveSpeed ?? 160) * dt; this.moveEntity(p, (cmd.moveX / len) * sp, (cmd.moveY / len) * sp); }
-    if (cmd.basic) this.tryCast(BASIC, cmd.aimX, cmd.aimY);
-    cmd.slots.forEach((on, i) => { const id = LOADOUT[i]; if (on && id) this.tryCast(id, cmd.aimX, cmd.aimY); });
+    cmd.slots.forEach((on, i) => { const id = this.slots[i]; if (on && id) this.tryCast(id, cmd.aimX, cmd.aimY); });
+  }
+
+  get slots(): Slots { return this.progress.slots ?? DEFAULT_SLOTS; }
+  /** Rebind a hotbar slot (swaps if the move is already slotted). Returns false if rejected. */
+  setSlot(slot: number, moveId: string | null): boolean {
+    const before = this.slots; const after = assignSlot(before, slot, moveId);
+    this.progress.slots = after; return after !== before;
   }
 
   cooldownLeft(id: string): number { return this.cooldowns.get(id) ?? 0; }

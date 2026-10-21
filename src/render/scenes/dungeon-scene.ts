@@ -1,12 +1,13 @@
 import Phaser from 'phaser';
-import { Sim, LOADOUT, BASIC, MAX_FLOOR, xpToNext, type Progress } from '../../core/sim';
+import { Sim, MAX_FLOOR, xpToNext, type Progress } from '../../core/sim';
 import { BALANCE } from '../../core/balance';
 import { WALL } from '../../core/dungeon/bsp-gen';
 import { monster as monsterData, move as moveData } from '../../data/registry';
 import { moveCooldown } from '../../core/moves/cooldown';
 import { SpriteProvider, TILESET_KEY, type AnimName } from '../views/sprite-provider';
 import { Fx } from '../views/fx';
-import { InputMap } from '../input/input-map';
+import { SkillPanelView } from '../views/skill-panel-view';
+import { InputMap, SLOT_LABELS } from '../input/input-map';
 import { InventoryView } from '../views/inventory-view';
 import { saveProgress } from '../save-io';
 import { t } from '../../i18n/t';
@@ -28,6 +29,7 @@ export class DungeonScene extends Phaser.Scene {
   private acc = 0;
   private drawnFloor = -1;
   private inv!: InventoryView;
+  private skills!: SkillPanelView;
   private saveT = 0;
   private fx!: Fx;
   private bars!: Phaser.GameObjects.Graphics;
@@ -52,9 +54,12 @@ export class DungeonScene extends Phaser.Scene {
     this.hudText = this.add.text(16, 0, '', { fontSize: '14px', color: '#fff' }).setScrollFactor(0).setDepth(11);
     this.banner = this.add.text(0, 80, '', { fontSize: '26px', color: '#ffe080', stroke: '#000', strokeThickness: 4 }).setScrollFactor(0).setDepth(11).setOrigin(0.5);
     this.inv = new InventoryView(() => this.sim, () => saveProgress(this.sim.progress));
-    this.events.once('shutdown', () => this.inv.destroy());
+    this.skills = new SkillPanelView(() => this.sim, () => saveProgress(this.sim.progress));
+    this.events.once('shutdown', () => { this.inv.destroy(); this.skills.destroy(); });
     const kb = this.input.keyboard;
-    kb?.on('keydown-I', () => this.inv.toggle());
+    kb?.addCapture('TAB');
+    kb?.on('keydown-TAB', () => this.skills.toggle());
+    kb?.on('keydown-I', () => { this.inv.toggle(); this.skills.setOpen(this.inv.open); });
     kb?.on('keydown-L', (ev: KeyboardEvent) => this.sim.debugLevelUp(ev.shiftKey)); // debug
     kb?.on('keydown-R', () => { if (this.sim.player.dead) this.sim.respawn(); });
     kb?.on('keydown-ENTER', () => { if (this.sim.victory) { saveProgress(this.sim.progress); this.scene.start('title'); } });
@@ -86,8 +91,8 @@ export class DungeonScene extends Phaser.Scene {
   update(_time: number, deltaMs: number): void {
     this.now += deltaMs / 1000;
     this.acc += Math.min(0.1, deltaMs / 1000);
-    const cmd = this.input2.read();
-    if (this.inv.open) { cmd.basic = false; cmd.slots = [false, false, false, false]; }
+    const cmd = this.input2.read(this.sim.player.x, this.sim.player.y);
+    if (this.inv.open || this.skills.open) { cmd.slots = cmd.slots.map(() => false); cmd.moveX = 0; cmd.moveY = 0; cmd.dodge = false; }
     const prevFloor = this.sim.floorNo;
     while (this.acc >= BALANCE.FIXED_DT) { this.sim.step(BALANCE.FIXED_DT, cmd); this.acc -= BALANCE.FIXED_DT; }
     if (this.sim.floorNo !== prevFloor) saveProgress(this.sim.progress);
@@ -228,14 +233,15 @@ export class DungeonScene extends Phaser.Scene {
     bar(16, H - 70, 260, (p.hp ?? 0) / (p.maxHp ?? 1), 0xd03030);
     bar(16, H - 50, 260, s.energy / BALANCE.energyMax, 0x3080ff);
     bar(16, H - 30, 260, s.progress.xp / xpToNext(s.progress.level), 0xc0c040);
-    const slots = [BASIC, ...LOADOUT];
+    const slots = s.slots;
     slots.forEach((id, i) => {
       const x = W / 2 - 150 + i * 62, y = H - 70;
       h.fillStyle(0x221a18, 0.9).fillRect(x, y, 54, 54); h.lineStyle(2, 0x886644).strokeRect(x, y, 54, 54);
+      if (!id) return;
       const cdFrac = s.cooldownLeft(id) / moveCooldown(moveData(id));
       if (cdFrac > 0) h.fillStyle(0x000000, 0.65).fillRect(x, y + 54 * (1 - cdFrac), 54, 54 * cdFrac);
     });
-    const labels = slots.map((id, i) => `${['LMB', '1/RMB', '2', '3', '4'][i]}:${t(`move.${id}`)}`).join('   ');
+    const labels = slots.map((id, i) => `${SLOT_LABELS[i]}:${id ? t(`move.${id}`) : t('skills.empty')}`).join('   ');
     const need = Math.ceil(s.totalMonsters * 0.6);
     let status = `${t('hud.floor', { floor: s.floorNo, max: MAX_FLOOR })}   ${t('hud.level', { level: s.progress.level })}   HP ${Math.ceil(p.hp ?? 0)}/${p.maxHp}   ${t('hud.kills', { k: s.killed, need })}`;
     if (s.exitOpen) status += `   ${t('hud.exitOpen')}`;
