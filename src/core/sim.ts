@@ -18,6 +18,8 @@ export interface InputCommand {
   moveTo?: { x: number; y: number }; attackTarget?: number;
   /** Shift+LMB held: attack in place toward cursor with the primary attack. */
   forceAttack?: boolean;
+  /** Consumable slots 1 / 2 (slot 1 = oran-berry heal; slot 2 reserved). */
+  items?: boolean[];
 }
 export interface Progress {
   level: number; xp: number; inventory: Item[]; equipped: Partial<Record<ItemSlot, Item>>;
@@ -27,6 +29,9 @@ export const newProgress = (seed: number): Progress => ({ level: 5, xp: 0, inven
 
 export const BASIC = BASIC_MOVE;
 export const MAX_FLOOR = 5;
+export const POTION_PER_FLOOR = 3; // TUNE
+export const POTION_HEAL = 0.35; // TUNE
+export const POTION_CD = 4; // TUNE
 const T = BALANCE.TILE;
 
 interface EquipStats { power: number; cdr: number; leech: number; kindling: boolean; extraProj: boolean; pierce: boolean; split: boolean; allIn: boolean }
@@ -41,6 +46,9 @@ export class Sim {
   energy: number = BALANCE.energyMax;
   cooldowns = new Map<string, number>();
   dodgeCd = 0;
+  /** Consumables: slot 0 = oran berry (heals POTION_HEAL of maxHp), refilled each floor; slot 1 reserved (empty). */
+  potions: [number, number] = [POTION_PER_FLOOR, 0];
+  potionCd = 0;
   totalMonsters = 0;
   killed = 0;
   exitOpen = false;
@@ -91,7 +99,7 @@ export class Sim {
     const keepHp = this.player?.hp;
     this.player = this.world.spawn({ kind: 'player', x: (this.floor.start.cx + 0.5) * T, y: (this.floor.start.cy + 0.5) * T, r: 12, team: 'player',
       hp: keepHp && keepHp > 0 ? Math.min(keepHp, st.maxHp) : st.maxHp, maxHp: st.maxHp, stats: st, level: this.progress.level, types: sp.types, speciesId: sp.id, iframes: 0 });
-    this.energy = BALANCE.energyMax; this.cooldowns.clear();
+    this.energy = BALANCE.energyMax; this.cooldowns.clear(); this.potions = [POTION_PER_FLOOR, 0]; this.potionCd = 0;
     this.killed = 0; this.exitOpen = false; this.bossAlive = false;
     const ids = Object.values(MONSTERS).filter((m) => !m.boss).map((m) => m.id);
     const lvl = 3 + n * 2;
@@ -125,6 +133,7 @@ export class Sim {
     this.energy = Math.min(BALANCE.energyMax, this.energy + BALANCE.energyRegen * dt);
     for (const [k, v] of this.cooldowns) this.cooldowns.set(k, Math.max(0, v - dt));
     this.dodgeCd = Math.max(0, this.dodgeCd - dt);
+    this.potionCd = Math.max(0, this.potionCd - dt);
     p.iframes = Math.max(0, (p.iframes ?? 0) - dt);
     if (!p.dead) this.playerInput(dt, cmd);
     this.aiStep(dt);
@@ -159,7 +168,19 @@ export class Sim {
     else if (cmd.forceAttack) { this.order = null; const a = this.primaryAttack(); if (a) this.tryCast(a, cmd.aimX, cmd.aimY); }
     else this.followOrder(dt);
     cmd.slots.forEach((on, i) => { const id = this.slots[i]; if (on && id) this.tryCast(id, cmd.aimX, cmd.aimY); });
+    if (cmd.items?.[0]) this.usePotion(0);
   }
+
+  usePotion(slot: number): boolean {
+    const p = this.player; const n = this.potions[slot] ?? 0;
+    if (slot !== 0 || n <= 0 || this.potionCd > 0 || p.dead || !p.maxHp || (p.hp ?? 0) >= p.maxHp) return false;
+    this.potions[0] = n - 1; this.potionCd = POTION_CD;
+    p.hp = Math.min(p.maxHp, (p.hp ?? 0) + p.maxHp * POTION_HEAL);
+    return true;
+  }
+
+  /** Levels until next evolution (null at final stage). */
+  levelsToEvolve(): number | null { const l = this.progress.level; return l < 16 ? 16 - l : l < 36 ? 36 - l : null; }
 
   /** Primary click attack: basic if slotted, else first slotted damaging move. */
   primaryAttack(): string | null {

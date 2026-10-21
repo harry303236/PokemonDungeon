@@ -9,6 +9,9 @@ import { SpriteProvider, TILESET_KEY, type AnimName } from '../views/sprite-prov
 import { renderPose } from '../views/render-pose';
 import { Fx } from '../views/fx';
 import { SkillPanelView } from '../views/skill-panel-view';
+import { Hud, type HudBuff } from '../hud/hud';
+import { HUD_FONT, PALETTE } from '../hud/hud-theme';
+import { POTION_CD } from '../../core/sim';
 import { InputMap, SLOT_LABELS } from '../input/input-map';
 import { InventoryView } from '../views/inventory-view';
 import { saveProgress } from '../save-io';
@@ -25,6 +28,8 @@ export class DungeonScene extends Phaser.Scene {
   private mapG!: Phaser.GameObjects.Graphics;
   private g!: Phaser.GameObjects.Graphics;
   private hud!: Phaser.GameObjects.Graphics;
+  private hudBar!: Hud;
+  private help!: Phaser.GameObjects.Text;
   private hudText!: Phaser.GameObjects.Text;
   private banner!: Phaser.GameObjects.Text;
   private bannerT = 0;
@@ -49,7 +54,6 @@ export class DungeonScene extends Phaser.Scene {
   private pending: { moveTo?: { x: number; y: number }; attackTarget?: number } = {};
   private lmb: { mode: 'ground' | 'attack' | 'force'; since: number } | null = null;
   private marker: { x: number; y: number; t: number } | null = null;
-  private barTexts: Phaser.GameObjects.Text[] = [];
 
   constructor() { super('dungeon'); }
 
@@ -61,13 +65,18 @@ export class DungeonScene extends Phaser.Scene {
     this.bars = this.add.graphics().setDepth(7);
     this.fx = new Fx(this);
     this.hud = this.add.graphics().setScrollFactor(0).setDepth(10);
-    this.hudText = this.add.text(16, 0, '', { fontSize: '14px', color: '#fff' }).setScrollFactor(0).setDepth(11);
-    this.banner = this.add.text(0, 80, '', { fontSize: '26px', color: '#ffe080', stroke: '#000', strokeThickness: 4 }).setScrollFactor(0).setDepth(11).setOrigin(0.5);
+    this.hudText = this.add.text(16, 0, '', { fontFamily: HUD_FONT, fontSize: '15px', color: PALETTE.text, stroke: PALETTE.shadow, strokeThickness: 4 }).setScrollFactor(0).setDepth(11);
+    this.hudBar = new Hud(this);
+    this.help = this.add.text(0, 0, t('hud.help.full'), { fontFamily: HUD_FONT, fontSize: '15px', color: PALETTE.text, backgroundColor: 'rgba(10,8,6,0.88)', padding: { x: 18, y: 14 }, lineSpacing: 6, stroke: PALETTE.shadow, strokeThickness: 2 })
+      .setScrollFactor(0).setDepth(40).setOrigin(0.5).setVisible(false);
+    this.banner = this.add.text(0, 80, '', { fontFamily: HUD_FONT, fontSize: '26px', color: PALETTE.dmgSuper, stroke: '#000', strokeThickness: 5 }).setScrollFactor(0).setDepth(11).setOrigin(0.5);
     this.inv = new InventoryView(() => this.sim, () => saveProgress(this.sim.progress));
     this.skills = new SkillPanelView(() => this.sim, () => saveProgress(this.sim.progress));
     this.events.once('shutdown', () => { this.inv.destroy(); this.skills.destroy(); });
     const kb = this.input.keyboard;
-    kb?.addCapture('TAB');
+    kb?.addCapture('TAB,F1');
+    kb?.on('keydown-ONE', () => { if (!this.uiOpen()) this.sim.usePotion(0); });
+    kb?.on('keydown-F1', () => this.help.setVisible(!this.help.visible));
     kb?.on('keydown-TAB', () => this.skills.toggle());
     kb?.on('keydown-I', () => { this.inv.toggle(); this.skills.setOpen(this.inv.open); });
     kb?.on('keydown-L', (ev: KeyboardEvent) => this.sim.debugLevelUp(ev.shiftKey)); // debug
@@ -78,14 +87,39 @@ export class DungeonScene extends Phaser.Scene {
     this.bindPointer();
     // Debug/test hook (read-only use in automated browser checks).
     (window as unknown as { __pokedungeon?: unknown }).__pokedungeon = { sim: () => this.sim, cam: this.cameras.main };
-    for (let i = 0; i < 15; i++) this.barTexts.push(this.add.text(0, 0, '', { fontSize: '11px', color: '#fff', stroke: '#000', strokeThickness: 3 }).setScrollFactor(0).setDepth(12).setOrigin(0.5));
+    this.bindHudDrop();
   }
+
+  /** Rebinding on the HUD bar: drops from the DOM skill panel onto canvas slots, and in-bar drag (panel open). */
+  private bindHudDrop(): void {
+    const canvas = this.game.canvas;
+    const toGame = (ev: DragEvent): { x: number; y: number } => { const r = canvas.getBoundingClientRect(); return { x: ((ev.clientX - r.left) * canvas.width) / r.width, y: ((ev.clientY - r.top) * canvas.height) / r.height }; };
+    const over = (ev: DragEvent): void => { const p = toGame(ev); if (this.hudBar.slotAt(p.x, p.y)?.kind === 'skill') ev.preventDefault(); };
+    const drop = (ev: DragEvent): void => {
+      const p = toGame(ev); const slot = this.hudBar.slotAt(p.x, p.y); if (slot?.kind !== 'skill') return;
+      ev.preventDefault();
+      try { const d = JSON.parse(ev.dataTransfer?.getData('text/plain') ?? '') as { move?: string }; if (d.move) { this.sim.setSlot(slot.index, d.move); this.afterRebind(); } } catch { /* ignore */ }
+    };
+    canvas.addEventListener('dragover', over); canvas.addEventListener('drop', drop);
+    this.events.once('shutdown', () => { canvas.removeEventListener('dragover', over); canvas.removeEventListener('drop', drop); });
+    this.input.on('pointerdown', (ptr: Phaser.Input.Pointer) => {
+      const s = this.hudBar.slotAt(ptr.x, ptr.y);
+      if (s?.kind === 'skill' && this.skills.open && ptr.leftButtonDown()) this.hudBar.dragFrom = s.index;
+      if (s?.kind === 'item' && ptr.leftButtonDown() && !this.uiOpen()) this.sim.usePotion(s.index);
+    });
+    this.input.on('pointerup', (ptr: Phaser.Input.Pointer) => {
+      const from = this.hudBar.dragFrom; this.hudBar.dragFrom = null; if (from === null) return;
+      const s = this.hudBar.slotAt(ptr.x, ptr.y); const id = this.sim.slots[from] ?? null;
+      if (s?.kind === 'skill' && s.index !== from && id) { this.sim.setSlot(s.index, id); this.afterRebind(); }
+    });
+  }
+  private afterRebind(): void { saveProgress(this.sim.progress); if (this.skills.open) this.skills.render(); }
 
   private uiOpen(): boolean { return this.inv.open || this.skills.open; }
 
   private bindPointer(): void {
     this.input.on('pointerdown', (ptr: Phaser.Input.Pointer) => {
-      if (!ptr.leftButtonDown() || this.uiOpen() || this.sim.player.dead) return;
+      if (!ptr.leftButtonDown() || this.uiOpen() || this.sim.player.dead || this.hudBar.contains(ptr.x, ptr.y)) return;
       const wp = ptr.positionToCamera(this.cameras.main) as Phaser.Math.Vector2;
       const shift = (ptr.event as MouseEvent | undefined)?.shiftKey ?? false;
       if (shift) { this.lmb = { mode: 'force', since: this.now }; return; }
@@ -103,17 +137,17 @@ export class DungeonScene extends Phaser.Scene {
   private bindEvents(): void {
     const bus = this.sim.bus;
     bus.on('damage:dealt', (e) => {
-      const color = e.target === this.sim.player.id ? '#ff5050' : e.typeEff > 1 ? '#ffe040' : e.typeEff < 1 ? '#999' : '#fff';
+      const color = e.target === this.sim.player.id ? PALETTE.dmgPlayer : e.typeEff > 1 ? PALETTE.dmgSuper : e.typeEff < 1 ? PALETTE.dmgWeak : PALETTE.dmg;
       const size = e.isCrit || e.typeEff > 1 ? 20 : 14;
       const tgt = this.sim.world.get(e.target);
       this.hurtUntil.set(e.target, this.now + 0.25);
       const big = e.isCrit || e.typeEff > 1 || (!!tgt?.maxHp && e.amount >= tgt.maxHp * 0.2);
       this.fx.hit(e.x, e.y + 8, big);
       if (big || e.target === this.sim.player.id) this.cameras.main.shake(110, e.target === this.sim.player.id ? 0.006 : 0.004);
-      const txt = this.add.text(e.x + Phaser.Math.Between(-8, 8), e.y, String(e.amount), { fontSize: `${size}px`, color, stroke: '#000', strokeThickness: 3 }).setOrigin(0.5).setDepth(5);
+      const txt = this.add.text(e.x + Phaser.Math.Between(-8, 8), e.y, String(e.amount), { fontFamily: HUD_FONT, fontSize: `${size}px`, color, stroke: PALETTE.shadow, strokeThickness: 4 }).setOrigin(0.5).setDepth(5);
       this.tweens.add({ targets: txt, y: e.y - 36, alpha: 0, duration: 700, onComplete: () => txt.destroy() });
     });
-    bus.on('move:cast', () => { const p = this.sim.player; this.castUntil = this.now + 0.3; this.fx.muzzle(p.x, p.y, p.rot); });
+    bus.on('move:cast', (e) => { this.hudBar.flashSlot(this.sim.slots.indexOf(e.moveId)); const p = this.sim.player; this.castUntil = this.now + 0.3; this.fx.muzzle(p.x, p.y, p.rot); });
     bus.on('player:levelup', (e) => { this.say(t('hud.levelup', { level: e.level })); saveProgress(this.sim.progress); });
     bus.on('player:evolve', (e) => { this.say(t(`hud.evolve.${e.stage}`)); saveProgress(this.sim.progress); });
     bus.on('floor:cleared', () => this.say(t('hud.exitOpen')));
@@ -320,31 +354,30 @@ export class DungeonScene extends Phaser.Scene {
     }
   }
 
+  private hudBuffs(): HudBuff[] {
+    const s = this.sim; const p = s.player; const eq = s.equipStats(); const out: HudBuff[] = [];
+    if (s.evoStage > 0) out.push({ id: 'evo', color: 0xff8a20, label: t('buff.evo') });
+    if (eq.kindling) out.push({ id: 'kindling', color: 0xff4a10, label: t('buff.kindling') });
+    if (eq.split) out.push({ id: 'split', color: 0xffb040, label: t('buff.split') });
+    if (eq.allIn && (p.hp ?? 0) < (p.maxHp ?? 1) * 0.25) out.push({ id: 'all-in', color: 0xffe060, label: t('buff.allIn') });
+    if (p.burn) out.push({ id: 'burn', color: 0xc02010, label: t('buff.burn') });
+    return out;
+  }
+
   private drawHud(dt: number): void {
     const s = this.sim; const p = s.player; const h = this.hud; const W = this.scale.width, H = this.scale.height;
     h.clear();
-    const bar = (x: number, y: number, w: number, frac: number, c: number): void => { h.fillStyle(0x000000, 0.7).fillRect(x, y, w, 14); h.fillStyle(c).fillRect(x, y, w * Math.max(0, Math.min(1, frac)), 14); };
-    bar(16, H - 70, 260, (p.hp ?? 0) / (p.maxHp ?? 1), 0xd03030);
-    bar(16, H - 50, 260, s.energy / BALANCE.energyMax, 0x3080ff);
-    bar(16, H - 30, 260, s.progress.xp / xpToNext(s.progress.level), 0xc0c040);
-    const slots = s.slots;
-    slots.forEach((id, i) => {
-      const x = W / 2 - 165 + i * 66, y = H - 74, S = 58;
-      h.fillStyle(0x1a1412, 0.92).fillRect(x, y, S, S); h.lineStyle(2, 0x886644).strokeRect(x, y, S, S);
-      const [kt, nt, ct] = [this.barTexts[i * 3], this.barTexts[i * 3 + 1], this.barTexts[i * 3 + 2]];
-      kt?.setPosition(x + 9, y + 7).setText(SLOT_LABELS[i] ?? '').setColor('#ffcc66');
-      if (!id) { nt?.setText(''); ct?.setText(''); return; }
-      drawMoveIcon(h, id, x + S / 2, y + S / 2 - 3);
-      nt?.setPosition(x + S / 2, y + S - 8).setText(t(`move.${id}`));
-      const left = s.cooldownLeft(id); const cdFrac = left / moveCooldown(moveData(id));
-      if (cdFrac > 0) h.fillStyle(0x000000, 0.6).fillRect(x, y + S * (1 - cdFrac), S, S * cdFrac);
-      ct?.setPosition(x + S / 2, y + S / 2 - 3).setText(left > 0.05 ? left.toFixed(1) : '').setFontSize(16);
-    });
-    const labels = slots.map((id, i) => `${SLOT_LABELS[i]}:${id ? t(`move.${id}`) : t('skills.empty')}`).join('   ');
+    this.hudBar.update({
+      hp: Math.max(0, p.hp ?? 0), maxHp: p.maxHp ?? 1, pp: s.energy, maxPp: BALANCE.energyMax, level: s.progress.level,
+      xp: s.progress.xp, xpNext: xpToNext(s.progress.level), levelsToEvolve: s.levelsToEvolve(), playerType: p.types?.[0],
+      slots: s.slots, slotLabels: SLOT_LABELS, cooldown: (id) => ({ left: s.cooldownLeft(id), total: moveCooldown(moveData(id)) }),
+      items: [{ count: s.potions[0], cdLeft: s.potionCd, cdTotal: POTION_CD }, { count: s.potions[1], cdLeft: 0, cdTotal: 1 }], buffs: this.hudBuffs(),
+    }, dt, this.now);
+    this.help.setPosition(W / 2, H / 2 - 40);
     const need = Math.ceil(s.totalMonsters * 0.6);
-    let status = `${t('hud.floor', { floor: s.floorNo, max: MAX_FLOOR })}   ${t('hud.level', { level: s.progress.level })}   HP ${Math.ceil(p.hp ?? 0)}/${p.maxHp}   ${t('hud.kills', { k: s.killed, need })}`;
+    let status = `${t('hud.floor', { floor: s.floorNo, max: MAX_FLOOR })}   ${t('hud.kills', { k: s.killed, need })}`;
     if (s.exitOpen) status += `   ${t('hud.exitOpen')}`;
-    this.hudText.setPosition(16, 10).setText(`${status}\n${labels}\n${t('hud.help')}`);
+    this.hudText.setPosition(16, 10).setText(`${status}\n${t('hud.helpHint')}`);
     // minimap
     const f = s.floor; const ms = 2.2; const mx = W - f.w * ms - 12, my = 12;
     h.fillStyle(0x000000, 0.5).fillRect(mx, my, f.w * ms, f.h * ms);
@@ -361,18 +394,3 @@ export class DungeonScene extends Phaser.Scene {
   }
 }
 
-const SHAPE_ICON_COLOR: Record<string, number> = { projectile: 0xff9a3c, beam: 0xff5a1f, zone: 0xe8462a, 'aoe-target': 0xffcc33, dash: 0xd0302a };
-/** Simple generated skill icon: colored orb + glyph by shape. */
-function drawMoveIcon(h: Phaser.GameObjects.Graphics, id: string, cx: number, cy: number): void {
-  const m = moveData(id); const c = SHAPE_ICON_COLOR[m.shape] ?? 0xff8800;
-  h.fillStyle(c, 0.35).fillCircle(cx, cy, 20); h.fillStyle(c, 0.8).fillCircle(cx, cy, 14);
-  h.fillStyle(0xfff0c0); h.lineStyle(3, 0xfff0c0);
-  switch (m.shape) {
-    case 'projectile': h.fillCircle(cx + 4, cy - 2, 5); h.fillTriangle(cx - 10, cy + 6, cx + 1, cy + 1, cx + 1, cy - 5); break;
-    case 'beam': h.lineBetween(cx - 12, cy + 8, cx + 12, cy - 8); h.lineStyle(1, 0xffffff).lineBetween(cx - 12, cy + 8, cx + 12, cy - 8); break;
-    case 'zone': h.strokeCircle(cx, cy, 9); h.fillCircle(cx, cy, 3); break;
-    case 'aoe-target': for (let k = 0; k < 6; k++) { const a = (k / 6) * Math.PI * 2; h.fillCircle(cx + Math.cos(a) * 8, cy + Math.sin(a) * 8, 3); } h.fillCircle(cx, cy, 4); break;
-    case 'dash': h.fillTriangle(cx - 10, cy - 8, cx + 10, cy, cx - 10, cy + 8); break;
-    default: h.fillCircle(cx, cy, 5);
-  }
-}

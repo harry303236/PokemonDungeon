@@ -206,3 +206,15 @@ describe('attack order', () => {
     sim.step(1 / 60, idle); expect(m.dead).toBe(true); expect(sim.order).toBeNull();
   });
 });
+
+describe('consumables', () => {
+  it('oran berry heals 35%, has cooldown and per-floor stock', () => {
+    const sim = new Sim(newProgress(4)); const p = sim.player; const max = p.maxHp ?? 0;
+    p.hp = 10; expect(sim.usePotion(0)).toBe(true); expect(p.hp).toBeCloseTo(Math.min(max, 10 + max * 0.35));
+    p.hp = 10; expect(sim.usePotion(0)).toBe(false); // cooldown
+    sim.potionCd = 0; expect(sim.usePotion(1)).toBe(false); // slot 2 empty
+    expect(sim.potions[0]).toBe(2);
+    p.hp = max; sim.potionCd = 0; expect(sim.usePotion(0)).toBe(false); // full hp
+    expect(sim.levelsToEvolve()).toBe(11);
+  });
+});

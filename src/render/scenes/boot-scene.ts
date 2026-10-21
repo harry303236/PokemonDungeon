@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { queueHudArt, generateHudTextures } from '../hud/hud-art';
 import { SpriteProvider, TILESET_KEY, TILESET_URL, type SkinManifest } from '../views/sprite-provider';
 
 /** Loads optional skin (sprites) + CC0 tileset. Missing files are tolerated -> placeholder rendering. */
@@ -7,10 +8,12 @@ export class BootScene extends Phaser.Scene {
   preload(): void {
     this.load.on('loaderror', (f: Phaser.Loader.File) => console.info(`[skin] optional asset missing: ${f.key}`));
     this.load.text('skin-manifest', 'assets/skin/manifest.json'); // text, so an SPA 404 fallback page can't throw
+    queueHudArt(this);
     this.load.spritesheet(TILESET_KEY, TILESET_URL, { frameWidth: 16, frameHeight: 16, spacing: 1 });
   }
   create(): void {
     this.makeFxTextures();
+    generateHudTextures(this); // procedural fallback for any HUD slice that failed to load
     SpriteProvider.tiles = this.textures.exists(TILESET_KEY);
     if (SpriteProvider.tiles) this.textures.get(TILESET_KEY).setFilter(Phaser.Textures.FilterMode.NEAREST);
     let m: SkinManifest | undefined;

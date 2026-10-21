@@ -12,7 +12,6 @@
  "hud.evolve.1": "進化成火恐龍！噴射火焰範圍變大",
  "hud.evolve.2": "進化成噴火龍！噴射火焰範圍大幅提升",
  "hud.loot": "撿到 {rarity} 物品",
- "hud.help": "左鍵點地面 尋路移動（按住=跟隨游標）｜左鍵點敵人 自動攻擊｜Shift+左鍵 原地攻擊｜方向鍵 移動｜滑鼠瞄準｜右鍵/Q/W/E/R 施放欄位招式｜Space 閃避｜Tab 招式面板｜I 背包",
  "move.ember": "火花",
  "move.flamethrower": "噴射火焰",
  "move.fire-spin": "火焰旋渦",
@@ -43,5 +42,14 @@
  "skills.title": "招式欄位（普攻也是一個招式；最多 4 個非普攻招式）",
  "skills.pool": "可用招式",
  "skills.empty": "空",
- "skills.hint": "拖曳招式到欄位即可放入或交換；也可以先點招式再點欄位。右鍵點欄位可以清空。Tab 關閉"
+ "skills.hint": "拖曳招式到欄位即可放入或交換；也可以先點招式再點欄位。右鍵點欄位可以清空。Tab 關閉",
+ "hud.xp.evo": "距進化 {n} 級",
+ "hud.xp.final": "已是最終進化",
+ "hud.helpHint": "F1 操作說明",
+ "hud.help.full": "操作說明（F1 關閉）\n左鍵點地面：尋路移動（按住＝跟隨游標）\n左鍵點敵人：自動走近並攻擊\nShift+左鍵：原地朝游標攻擊\n方向鍵：直接移動\n右鍵 / Q / W / E / R：施放欄位招式\n1：使用樹果（回復 35% HP）　2：（空）\nSpace：閃避　Tab：招式面板（可拖曳到下方欄位）　I：背包\nL / Shift+L：除錯升級",
+ "buff.evo": "進化",
+ "buff.kindling": "引火",
+ "buff.split": "分裂",
+ "buff.allIn": "孤注",
+ "buff.burn": "灼傷"
 }
