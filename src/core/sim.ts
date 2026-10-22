@@ -7,9 +7,9 @@ import { calcStats, xpToNext } from './stats/stat-calc';
 import { calcDamage } from './combat/damage';
 import { moveCooldown, energyCost } from './moves/cooldown';
 import { BASIC_MOVE, DEFAULT_SLOTS, assignSlot, validateSlots, type Slots } from './moves/loadout';
-import { TALENTS, Build, ensureBuild, moveTags, MOVE_TAGS, STATUSES, GEMS, reactionsFor, triggerMatches, REACTION_RULES, type BuildSave, type ReactionRule } from './build/build';
+import { TALENTS, engineMoveId, Build, ensureBuild, moveTags, MOVE_TAGS, STATUSES, GEMS, reactionsFor, triggerMatches, REACTION_RULES, type BuildSave, type ReactionRule } from './build/build';
 import { baseSpec, buildMoveSpec, dmgFactor, areaFactor, type Modifier, type MoveSpec } from './build/pipeline';
-import { emptyBonuses, mechanics, type PlayerBonuses } from './build/talents';
+import { emptyBonuses, mechanics, moveSpeedPct, cdrPct, damageReductionPct, type PlayerBonuses } from './build/talents';
 import { findPath, clampToFloor, hasLineOfSight, type Pt } from './dungeon/pathfind';
 import { rollItem, canEquip, type Item, type ItemSlot } from './loot/loot-roller';
 import { monster as monsterData, move as moveData, species as speciesData, MONSTERS } from '../data/registry';
@@ -126,8 +126,33 @@ export class Sim {
   playerStats(): ReturnType<typeof calcStats> {
     const st = calcStats(speciesData(this.speciesId), this.progress.level); const b = this.bon;
     return { ...st, atk: Math.round(st.atk * (1 + b.atkPct / 100)), spa: Math.round(st.spa * (1 + b.spAtkPct / 100)), def: Math.round(st.def * (1 + b.defPct / 100)),
-      moveSpeed: st.moveSpeed * (1 + b.speedPct / 100) };
+      maxHp: Math.round(st.maxHp * (1 + b.maxHpPct / 100)), moveSpeed: st.moveSpeed * (1 + moveSpeedPct(b, this.mech).value / 100) };
   }
+  /** Current move speed: base × (1 + capped(static talents + post-dodge buff)). Caps applied after summing. */
+  moveSpeed(): number {
+    const base = calcStats(speciesData(this.speciesId), this.progress.level).moveSpeed;
+    const buff = this.bon.onDodgeSpeed && this.time < this.dodgeBuffUntil ? this.bon.onDodgeSpeed.pct : 0;
+    return base * (1 + moveSpeedPct(this.bon, this.mech, buff).value / 100);
+  }
+  /** Cooldown multiplier for a move from talents (global CDR + per-move %, summed then capped). */
+  talentCdMult(id: string): number {
+    const per = Object.entries(this.bon.moveCdPct).find(([k]) => engineMoveId(k) === id)?.[0];
+    return 1 - cdrPct(this.bon, this.mech, per).value / 100;
+  }
+  /** 戰鬥節奏: on-kill CD refund, max N triggers/frame and max X s refunded per rolling second (meta.mechanics). */
+  onKillRefund(): number {
+    const v = this.bon.onKillCdRefundSec; if (v <= 0) return 0;
+    if (this.killRefundFrame === this.frameNo && this.killRefundsThisFrame >= this.mech.onKillCdRefundMaxPerFrame) return 0;
+    if (this.killRefundFrame !== this.frameNo) { this.killRefundFrame = this.frameNo; this.killRefundsThisFrame = 0; }
+    this.killRefundLog = this.killRefundLog.filter(([t]) => this.time - t < 1);
+    const used = this.killRefundLog.reduce((s, [, a]) => s + a, 0);
+    const amt = Math.min(v, this.mech.onKillCdRefundMaxSecPerSec - used); if (amt <= 1e-9) return 0;
+    this.killRefundsThisFrame++; this.killRefundLog.push([this.time, amt]);
+    for (const [k, cd] of this.cooldowns) this.cooldowns.set(k, Math.max(0, cd - amt));
+    return amt;
+  }
+  lastPlayerDmg = 0;
+  private dodgeBuffUntil = -1; frameNo = 0; private killRefundFrame = -1; private killRefundsThisFrame = 0; private killRefundLog: Array<[number, number]> = [];
   /** Re-derive talent bonuses + player stats after a build change (keeps HP ratio). */
   refreshBuild(): void {
     this.bon = this.build.bonuses(); const p = this.player; if (!p) return;
@@ -174,7 +199,7 @@ export class Sim {
   // ---------- step ----------
   step(dt: number, cmd: InputCommand): void {
     if (this.victory) return;
-    this.time += dt;
+    this.time += dt; this.frameNo++;
     const p = this.player;
     this.hash.clear();
     for (const m of this.world.query('monster')) this.hash.insert(m);
@@ -211,13 +236,13 @@ export class Sim {
       const len = Math.hypot(cmd.moveX, cmd.moveY) || 1;
       const dx = cmd.moveX || Math.cos(p.rot); const dy = cmd.moveY || Math.sin(p.rot);
       p.dash = { t: 0.2, dirX: dx / (cmd.moveX || cmd.moveY ? len : 1), dirY: dy / (cmd.moveX || cmd.moveY ? len : 1), speed: 650, hit: false };
-      p.iframes = Math.max(p.iframes ?? 0, 0.3); this.dodgeCd = 0.9 * Math.max(0.2, 1 + this.bon.dodgeCdPct / 100);
+      p.iframes = Math.max(p.iframes ?? 0, 0.3); if (this.bon.onDodgeSpeed) this.dodgeBuffUntil = this.time + 0.2 + this.bon.onDodgeSpeed.sec; this.dodgeCd = 0.9 * Math.max(0.2, 1 + this.bon.dodgeCdPct / 100);
       return;
     }
     if (cmd.moveTo) this.orderMove(cmd.moveTo.x, cmd.moveTo.y);
     if (cmd.attackTarget !== undefined) this.order = { kind: 'attack', target: cmd.attackTarget, path: [], repath: 0 };
     const len = Math.hypot(cmd.moveX, cmd.moveY);
-    if (len > 0) { this.order = null; const sp = (p.stats?.moveSpeed ?? 160) * dt; this.moveEntity(p, (cmd.moveX / len) * sp, (cmd.moveY / len) * sp); this.walkTrail(sp); }
+    if (len > 0) { this.order = null; const sp = this.moveSpeed() * dt; this.moveEntity(p, (cmd.moveX / len) * sp, (cmd.moveY / len) * sp); this.walkTrail(sp); }
     else if (cmd.forceAttack) { this.order = null; const a = this.primaryAttack(); if (a) this.tryCast(a, cmd.aimX, cmd.aimY); }
     else this.followOrder(dt);
     const dashTaps = this.dashTaps; this.dashTaps = [false, false, false, false, false];
@@ -229,7 +254,7 @@ export class Sim {
     const p = this.player; const n = this.potions[slot] ?? 0;
     if (slot !== 0 || n <= 0 || this.potionCd > 0 || p.dead || !p.maxHp || (p.hp ?? 0) >= p.maxHp) return false;
     this.potions[0] = n - 1; this.potionCd = POTION_CD;
-    p.hp = Math.min(p.maxHp, (p.hp ?? 0) + p.maxHp * POTION_HEAL);
+    p.hp = Math.min(p.maxHp, (p.hp ?? 0) + p.maxHp * POTION_HEAL * (1 + this.bon.consumablePct / 100));
     return true;
   }
 
@@ -260,7 +285,7 @@ export class Sim {
     this.spawnGround('fire', this.player.x, this.player.y, this.mech.trailLifeSec, this.player.id, 0.08 * (1 + this.bon.trailDmgPct / 100));
   }
   private stepAlong(path: Pt[], dt: number): void {
-    const p = this.player; let budget = (p.stats?.moveSpeed ?? 160) * dt;
+    const p = this.player; let budget = this.moveSpeed() * dt;
     while (budget > 0 && path.length) {
       const wp = path[0] as Pt; const dx = wp.x - p.x, dy = wp.y - p.y; const d = Math.hypot(dx, dy);
       this.walkTrail(Math.min(d, budget));
@@ -302,7 +327,7 @@ export class Sim {
     const cost = eq.allIn && lowHp ? 0 : energyCost(m);
     if (this.energy < cost) return false;
     this.energy -= cost;
-    this.cooldowns.set(id, moveCooldown(m, eq.cdr));
+    this.cooldowns.set(id, moveCooldown(m, eq.cdr) * this.talentCdMult(id));
     const spec = this.moveSpec(id, eq);
     const mods: MoveMods = { powerBonus: eq.power, leech: eq.leech + spec.leech, kindling: eq.kindling, spec };
     const ang = Math.atan2(ay - p.y, ax - p.x);
@@ -430,7 +455,10 @@ export class Sim {
     const { dmg, typeEff } = calcDamage({ level: src.level ?? 1, power: m.power, atk: phys ? a.atk : a.spa, def: phys ? d.def : d.spd, moveType: m.type,
       attackerTypes: src.types ?? [], defenderTypes: target.types ?? [], isCrit, roll: this.rng.next(), bonus: mods?.powerBonus ?? 0, mult: mult * tierDmg,
       burnedPhysical: phys && !!src.burn });
-    target.hp -= dmg;
+    if (target.kind === 'player' && target.maxHp) { // additive damage-taken sum, then capped (meta.mechanics)
+      const dr = damageReductionPct(this.bon, this.mech, (target.hp ?? 0) / target.maxHp).value; const scaled = Math.max(1, Math.round(dmg * (1 - dr / 100)));
+      target.hp -= scaled; this.lastPlayerDmg = scaled;
+    } else target.hp -= dmg;
     if (target.kind === 'player') target.iframes = BALANCE.playerIFrames;
     this.bus.emit('damage:dealt', { target: target.id, amount: dmg, isCrit, typeEff, x: target.x, y: target.y - target.r });
     if (mods && mods.leech > 0 && src.hp !== undefined && src.maxHp) src.hp = Math.min(src.maxHp, src.hp + dmg * mods.leech);
@@ -540,6 +568,7 @@ export class Sim {
     if (t.isBoss) this.bossAlive = false;
     const md = monsterData(t.monsterId ?? '');
     const sp = speciesData(md.speciesId);
+    this.onKillRefund();
     if (this.bon.keystones.has('ks_solarPower') && this.sunT > 0) { const P = this.player; if (P.maxHp && P.hp !== undefined) P.hp = Math.min(P.maxHp, P.hp + P.maxHp * 0.03); }
     this.gainXp(Math.round(((sp.baseExp * (t.level ?? 1)) / 7) * md.xpMult));
     // build currencies: gold always, ash shard / support gem sometimes (TUNE)
@@ -662,6 +691,7 @@ export class Sim {
 
   private statusStep(dt: number): void {
     const P = this.player;
+    if (this.bon.hpRegenPctPerSec > 0 && !P.dead && P.maxHp && P.hp !== undefined) P.hp = Math.min(P.maxHp, P.hp + P.maxHp * this.bon.hpRegenPctPerSec / 100 * dt);
     if (this.bon.keystones.has('ks_solarPower') && this.sunT > 0 && !P.dead && P.maxHp && P.hp !== undefined) P.hp = Math.max(1, P.hp - P.maxHp * 0.01 * dt); // solar drain
     for (const e of [...this.world.query('monster'), this.player]) {
       if (e.dead || e.hp === undefined || !e.maxHp) continue;

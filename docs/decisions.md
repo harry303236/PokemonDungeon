@@ -71,3 +71,10 @@
 - Art: public/assets/hud/talents (frames small/notable/keystone/tooltip, icons/talent-<id>.png; missing icon -> root icon at 35%). Layout matches /workspace/art_talent/mockup-talent-tree.png: root bottom, 3 branches up, keystones on top.
 - Clicks only stage (`talent-plan.ts`: stageAdd/stageRemove on a pending delta); Confirm applies refunds (ash shards after free-respec level) then allocations in data order; Cancel discards.
 - Tooltip lines are data-driven: name split "標題：描述", effect via talent-labels.json (current/next rank; `frac` fmt for fractional values), red `drawback` field (new, on ks_solarPower), status priority: exclusive > level (evoStageUnlock) > points > prereq names.
+
+## ADR: Utility branch + caps
+- 通用 branch (11 util_* + 2 bridge_*) synced from the director file. Layout per meta.ui.utilityBranchLayout: subtrees off root spread left/right below the main columns (balanced by subtree size); bridges via `uiPlacement: between:a|b`; `requiresAny` = any one parent.
+- Bridge `evoStage: 16` is not a stage number; it equals evoStageUnlock['2'], so it is read as a minimum level (validator accepts stage numbers or unlock levels).
+- Caps (meta.mechanics) are applied after summing ALL modifiers: move speed (talents + post-dodge buff), CDR (global + per-move), damage reduction (all damage-taken sources summed additively, e.g. 耐熱體質 + 毅力). Tooltips show the effective post-cap total and flag when capped.
+- 戰鬥節奏 limiter: `onKillCdRefundMaxPerFrame` (1) and `onKillCdRefundMaxSecPerSec` (1.5, rolling 1 s window) — added to meta.mechanics in both repo and director copies.
+- Click-to-move moves exactly to waypoints (budget clipped at waypoint), so higher speed cannot overshoot; covered by a test at > cap speed.

@@ -1,7 +1,9 @@
 import type { Sim } from '../../core/sim';
 import { TALENTS, fullResetCost, RESPEC_FREE_BEFORE } from '../../core/build/build';
+import DIRECTOR from '../../data/build/charmander-moves-gems.json';
+for (const mv of (DIRECTOR as unknown as { moves: { id: string; name?: string }[] }).moves) MOVE_NAMES[mv.id] ??= mv.name ?? mv.id;
 import { isImplemented, levelPoints, debugPoints, type Alloc, type TalentNode } from '../../core/build/talents';
-import { nodeKind, KIND_LABEL, splitName, effectLine, merged, stageAdd, stageRemove, pendingAdds, pendingRefunds, planCost, statusLine, type NodeKind } from '../../core/build/talent-plan';
+import { capLine, isTplEffect, MOVE_NAMES, TPL_EXTRA, nodeKind, KIND_LABEL, splitName, effectLine, merged, stageAdd, stageRemove, pendingAdds, pendingRefunds, planCost, statusLine, type NodeKind } from '../../core/build/talent-plan';
 import LABELS from '../../data/build/talent-labels.json';
 
 export const fmtVal = (v: number | string, t: string): string => {
@@ -13,12 +15,27 @@ export const fmtVal = (v: number | string, t: string): string => {
 const UI = TALENTS.meta.ui ?? {};
 const ART = 'assets/hud/talents/';
 const W = 1280, H = 720;
-const SIZE: Record<NodeKind, number> = { small: 54, notable: 70, keystone: 108, root: 70 };
+const SIZE: Record<NodeKind, number> = { small: 50, notable: 64, keystone: 96, root: 66 };
 const FRAME: Record<NodeKind, string> = { small: 'small', notable: 'notable', keystone: 'keystone', root: 'notable' };
 const COLX = [300, 640, 980];
 // rows (bottom→top growth): root, T1 pair, T1 mid, T2 pair, T2 mid, T3 pair, keystone
-const ROWY = { ks: 128, t3: 236, t2mid: 302, t2: 368, t1mid: 434, t1: 500, root: 590 };
+const ROWY = { ks: 118, t3: 212, t2mid: 268, t2: 324, t1mid: 380, t1: 436, root: 520 };
+const UTIL_ROWS = [565, 620, 675], UTIL_X0 = 100, UTIL_DX = 82;
 
+/** Utility branch (meta.ui.utilityBranchLayout): subtrees hang off root and spread left/right horizontally below the main branches.
+ *  Tier-1 subtrees are balanced across sides; depth -> x step outward; each leaf path gets its own row. */
+function utilityLayout(nodes: TalentNode[], util: Set<string>): Map<string, { x: number; y: number }> {
+  const out = new Map<string, { x: number; y: number }>(); const kids = (id: string) => nodes.filter((c) => util.has(c.id) && c.requires.includes(id) && !c.uiPlacement);
+  const size = (id: string): number => 1 + kids(id).reduce((s, c) => s + size(c.id), 0);
+  const roots = nodes.filter((n) => util.has(n.id) && !n.uiPlacement && n.requires.every((r) => !util.has(r)));
+  const sides: [TalentNode[], TalentNode[]] = [[], []]; const tot = [0, 0];
+  for (const t of roots) { const i = tot[0]! <= tot[1]! ? 0 : 1; sides[i]!.push(t); tot[i]! += size(t.id); }
+  sides.forEach((list, si) => { let row = 0; const dir = si === 0 ? -1 : 1;
+    const place = (n: TalentNode, depth: number): void => { const r0 = row; const ks = kids(n.id); out.set(n.id, { x: W / 2 + dir * (UTIL_X0 + depth * UTIL_DX), y: UTIL_ROWS[Math.min(r0, UTIL_ROWS.length - 1)]! });
+      if (!ks.length) { row++; return; } ks.forEach((c) => place(c, depth + 1)); };
+    list.forEach((t) => place(t, 0)); });
+  return out;
+}
 function center(n: TalentNode, branches: string[]): { x: number; y: number } {
   if (n.branch === 'core') return { x: W / 2, y: ROWY.root };
   const x = COLX[branches.indexOf(n.branch)] ?? W / 2; const k = nodeKind(n);
@@ -40,13 +57,16 @@ export class TalentPanelView {
   setOpen(v: boolean): void { this.open = v; if (!v) { this.pend = {}; this.hover = null; } this.el.style.display = v ? 'block' : 'none'; if (v) this.render(); }
   toggle(): void { this.setOpen(!this.open); }
   render(): void {
-    const sim = this.sim(); const b = sim.build; const a = b.s.talents; const lvl = sim.progress.level; const ctx = b.tctx();
+    const sim = this.sim(); TPL_EXTRA.limit = sim.mech.onKillCdRefundMaxSecPerSec; const b = sim.build; const a = b.s.talents; const lvl = sim.progress.level; const ctx = b.tctx();
     const m = merged(a, this.pend);
-    const branches = [...new Set(TALENTS.nodes.filter((n) => n.branch !== 'core').map((n) => n.branch))];
+    const branches = [...new Set(TALENTS.nodes.filter((n) => n.effectType === 'keystone').map((n) => n.branch))]; // main columns = branches with a keystone
     const nodes = TALENTS.nodes.filter((n) => !(UI.hideUnimplemented && !isImplemented(n)));
-    const pos = new Map(nodes.map((n) => [n.id, center(n, branches)]));
+    const util = new Set(nodes.filter((n) => n.branch !== 'core' && !branches.includes(n.branch)).map((n) => n.id));
+    const pos = new Map(nodes.filter((n) => !util.has(n.id)).map((n) => [n.id, center(n, branches)]));
+    for (const [id, p] of utilityLayout(nodes, util)) pos.set(id, p);
+    for (const n of nodes) if (n.uiPlacement?.startsWith('between:')) { const [x, y] = n.uiPlacement.slice(8).split('|').map((id) => pos.get(id)); if (x && y) pos.set(n.id, { x: (x.x + y.x) / 2, y: (x.y + y.y) / 2 }); }
     const st = (id: string): 'on' | 'plan' | 'off' => ((a[id] ?? 0) > 0 && (m[id] ?? 0) > 0 ? 'on' : (m[id] ?? 0) > 0 ? 'plan' : 'off');
-    const lines = UI.drawPrereqLines === false ? '' : nodes.flatMap((n) => n.requires.filter((r) => pos.has(r)).map((r) => {
+    const lines = UI.drawPrereqLines === false ? '' : nodes.flatMap((n) => [...n.requires, ...(n.requiresAny ?? [])].filter((r) => pos.has(r)).map((r) => {
       const p = pos.get(n.id)!, q = pos.get(r)!; const s1 = st(n.id), s2 = st(r);
       const on = s1 !== 'off' && s2 !== 'off'; const plan = on && (s1 === 'plan' || s2 === 'plan');
       return `<line x1="${q.x}" y1="${q.y}" x2="${p.x}" y2="${p.y}" stroke="${plan ? '#7fd8ff' : on ? '#f0a83a' : '#5a4a3a'}" stroke-width="${on ? 4 : 2.5}" ${plan ? 'stroke-dasharray="8 6"' : ''} ${on ? 'filter="url(#tglow)"' : 'opacity=".75"'}/>`;
@@ -67,20 +87,20 @@ export class TalentPanelView {
     };
     const tip = (): string => {
       const n = nodes.find((x) => x.id === this.hover); if (!n) return '';
-      const p = pos.get(n.id)!; const k = nodeKind(n); const { title, desc } = splitName(n); const eff = effectLine(n, m[n.id] ?? 0);
+      const p = pos.get(n.id)!; const k = nodeKind(n); const { title, desc } = splitName(n); const eff = effectLine(n, m[n.id] ?? 0); const cl = capLine(n, sim.bon, sim.mech, (sim.player.hp ?? 1) / Math.max(1, sim.player.maxHp ?? 1));
       const sl = statusLine(TALENTS, a, this.pend, n, ctx); const col = { ok: '#7fe07f', plan: '#7fd8ff', bad: '#9a948c', hint: '#ccc' }[sl.tone];
       void p;
       return `<div id="tp-tip" style="position:absolute;left:-9999px;top:0;opacity:.9;width:330px;box-sizing:border-box;padding:26px 30px 22px;pointer-events:none;
         border:44px solid transparent;border-image:url(${ART}talent-frame-tooltip.png) 90 fill / 44px stretch;margin:-44px">
         <div style="text-align:center;color:#ffc75a;font-size:17px;font-weight:bold">${title}</div>
         <div style="text-align:center;color:#a99;font-size:11px;margin:2px 0 8px">${KIND_LABEL[k]}${n.branch !== 'core' ? ` · ${n.branch}` : ''}</div>
-        ${desc ? `<div style="margin-bottom:4px">${desc}</div>` : ''}${eff ? `<div style="color:#f2e2c0">${eff}</div>` : ''}
+        ${desc && !(eff && isTplEffect(n.effectType)) ? `<div style="margin-bottom:4px">${desc}</div>` : ''}${eff ? `<div style="color:#f2e2c0">${eff}</div>` : ''}${cl ? `<div style="color:${cl.includes('已達上限') ? '#ffb070' : '#b8ab98'};font-size:12px;margin-top:3px">${cl}</div>` : ''}
         ${n.drawback ? `<div style="color:#ff5a4a;margin-top:4px">代價：${n.drawback}</div>` : ''}
         <div style="color:${col};margin-top:10px">${sl.text}</div></div>`;
     };
     const lp = levelPoints(TALENTS, lvl), dp = debugPoints(TALENTS, ctx), left = b.pointsLeft() - pendingAdds(this.pend) + pendingRefunds(this.pend);
     const paid = lvl >= RESPEC_FREE_BEFORE(); const cost = planCost(this.pend, paid); const anyPend = Object.keys(this.pend).length > 0;
-    const sum = Object.entries(this.pend).map(([id, d]) => { const n = TALENTS.nodes.find((x) => x.id === id)!; const e = fmtVal(typeof n.value === 'number' ? n.value * d : n.value, n.effectType);
+    const sum = Object.entries(this.pend).map(([id, d]) => { const n = TALENTS.nodes.find((x) => x.id === id)!; const e = typeof n.value === 'object' ? '' : fmtVal(typeof n.value === 'number' ? n.value * d : n.value, n.effectType);
       return `<span style="color:${d > 0 ? '#9fe0ff' : '#ff9a8a'}">${d > 0 ? '+' : '−'}${splitName(n).title}${Math.abs(d) > 1 ? `×${Math.abs(d)}` : ''}${e && n.effectType !== 'keystone' ? `（${e}）` : ''}</span>`; }).join('、');
     const btn = 'background:#2a1a10;color:#ffc75a;border:1px solid #8a6a3a;padding:4px 12px;cursor:pointer;font-size:13px';
     this.el.innerHTML = `<style>@keyframes tpPulse{from{opacity:.55}to{opacity:1}}</style>
@@ -92,7 +112,7 @@ export class TalentPanelView {
         <button id="tp-reset" style="${btn};margin-left:8px">全部重置（${fullResetCost(lvl) || '免費'}${fullResetCost(lvl) ? ' 金' : ''}）</button></span></div>
       ${nodes.map(badge).join('')}
       <div style="position:absolute;left:24px;bottom:18px;font-size:17px;color:#e8d6b0">剩餘點數 <b id="tp-points" style="color:#ffd27a">${left}</b>${this.msg ? ` <span style="font-size:13px;color:#f88">${this.msg}</span>` : ''}</div>
-      ${anyPend ? `<div id="tp-plan" style="position:absolute;right:20px;bottom:14px;max-width:760px;background:rgba(14,10,8,.92);border:1px solid #6a5232;padding:8px 12px;display:flex;gap:12px;align-items:center">
+      ${anyPend ? `<div id="tp-plan" style="position:absolute;right:12px;bottom:12px;width:310px;flex-wrap:wrap;background:rgba(14,10,8,.92);border:1px solid #6a5232;padding:8px 12px;display:flex;gap:12px;align-items:center">
         <div style="font-size:12px;line-height:1.5"><b style="color:#7fd8ff">規劃中</b> ${sum}<br><span style="color:#cba">花費：灰燼碎片 ${cost.ashShards} · 金幣 ${cost.gold} · 點數 ${pendingAdds(this.pend)}</span></div>
         <button id="tp-ok" style="${btn};border-color:#c90">確認</button><button id="tp-cancel" style="${btn}">取消</button></div>` : ''}
       <div id="tp-tipwrap">${tip()}</div>`;

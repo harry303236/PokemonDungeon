@@ -23,20 +23,27 @@
     "branchCost": {
       "烈陽焚天": 29,
       "龍爪狂襲": 29,
-      "灼燒之翼": 29
+      "灼燒之翼": 29,
+      "通用": 37
     },
-    "notes": "Branch cost > half of 49 so two full branches impossible; keystone exclusiveGroup allows only one.",
+    "notes": "Branch cost > half of 49 so two full branches impossible; keystone exclusiveGroup allows only one. 通用分支(35點)與主線搶點：主線滿29點後只剩20點可放生存/機動。",
     "ui": {
       "drawPrereqLines": true,
       "keystonePinnedTop": true,
       "hideUnimplemented": true,
-      "pointsMustEqualLevelMinus1": true
+      "pointsMustEqualLevelMinus1": true,
+      "utilityBranchLayout": "通用節點從火種往左右兩側水平展開，排在三條主線下方，不佔主線欄位"
     },
     "mechanics": {
       "_doc": "tuning for talent effects (seconds)",
       "comboResetSec": 2,
       "trailLifeSec": 2,
-      "trailPerEnemyIcdSec": 0.5
+      "trailPerEnemyIcdSec": 0.5,
+      "cooldownReductionCapPct": 40,
+      "moveSpeedCapPct": 50,
+      "damageTakenReductionCapPct": 40,
+      "onKillCdRefundMaxPerFrame": 1,
+      "onKillCdRefundMaxSecPerSec": 1.5
     }
   },
   "nodes": [
@@ -443,6 +450,203 @@
       ],
       "exclusiveGroup": "keystone",
       "uiPin": "top"
+    },
+    {
+      "id": "util_move",
+      "name": "迅捷步伐",
+      "branch": "通用",
+      "tier": 1,
+      "evoStage": 1,
+      "effectType": "moveSpeedPct",
+      "value": 3,
+      "maxRank": 3,
+      "requires": [
+        "root"
+      ],
+      "exclusiveGroup": null
+    },
+    {
+      "id": "util_def",
+      "name": "堅硬鱗片",
+      "branch": "通用",
+      "tier": 1,
+      "evoStage": 1,
+      "effectType": "defensePct",
+      "value": 5,
+      "maxRank": 3,
+      "requires": [
+        "root"
+      ],
+      "exclusiveGroup": null
+    },
+    {
+      "id": "util_hp",
+      "name": "生命之焰",
+      "branch": "通用",
+      "tier": 1,
+      "evoStage": 1,
+      "effectType": "maxHpPct",
+      "value": 4,
+      "maxRank": 3,
+      "requires": [
+        "root"
+      ],
+      "exclusiveGroup": null
+    },
+    {
+      "id": "util_dodge",
+      "name": "輕盈身法",
+      "branch": "通用",
+      "tier": 2,
+      "evoStage": 1,
+      "effectType": "dodgeCooldownPct",
+      "value": -6,
+      "maxRank": 5,
+      "requires": [
+        "util_move"
+      ],
+      "exclusiveGroup": null
+    },
+    {
+      "id": "util_cdr",
+      "name": "專注",
+      "branch": "通用",
+      "tier": 2,
+      "evoStage": 1,
+      "effectType": "cooldownReductionPct",
+      "value": 3,
+      "maxRank": 5,
+      "requires": [
+        "util_move"
+      ],
+      "exclusiveGroup": null
+    },
+    {
+      "id": "util_res",
+      "name": "耐熱體質",
+      "branch": "通用",
+      "tier": 2,
+      "evoStage": 1,
+      "effectType": "damageTakenPct",
+      "value": -2,
+      "maxRank": 5,
+      "requires": [
+        "util_def"
+      ],
+      "exclusiveGroup": null
+    },
+    {
+      "id": "util_regen",
+      "name": "再燃",
+      "branch": "通用",
+      "tier": 2,
+      "evoStage": 1,
+      "effectType": "hpRegenPctPerSec",
+      "value": 0.2,
+      "maxRank": 5,
+      "requires": [
+        "util_hp"
+      ],
+      "exclusiveGroup": null
+    },
+    {
+      "id": "util_potion",
+      "name": "樹果知識",
+      "branch": "通用",
+      "tier": 2,
+      "evoStage": 1,
+      "effectType": "consumableEffectPct",
+      "value": 10,
+      "maxRank": 3,
+      "requires": [
+        "util_hp"
+      ],
+      "exclusiveGroup": null
+    },
+    {
+      "id": "util_n_gust",
+      "name": "疾風：閃避後 2 秒移動速度 +20%",
+      "branch": "通用",
+      "tier": 3,
+      "evoStage": 1,
+      "effectType": "onDodgeMoveSpeed",
+      "value": {
+        "pct": 20,
+        "sec": 2
+      },
+      "maxRank": 1,
+      "requires": [
+        "util_dodge"
+      ],
+      "exclusiveGroup": null
+    },
+    {
+      "id": "util_n_rhythm",
+      "name": "戰鬥節奏：擊殺時所有技能冷卻減少 0.5 秒",
+      "branch": "通用",
+      "tier": 3,
+      "evoStage": 1,
+      "effectType": "onKillCdRefundSec",
+      "value": 0.5,
+      "maxRank": 1,
+      "requires": [
+        "util_cdr"
+      ],
+      "exclusiveGroup": null
+    },
+    {
+      "id": "util_n_guts",
+      "name": "毅力：生命低於 35% 時受到傷害 -15%",
+      "branch": "通用",
+      "tier": 3,
+      "evoStage": 1,
+      "effectType": "lowHpDamageTakenPct",
+      "value": {
+        "threshold": 35,
+        "pct": -15
+      },
+      "maxRank": 1,
+      "requires": [
+        "util_res"
+      ],
+      "exclusiveGroup": null
+    },
+    {
+      "id": "bridge_sun_claw",
+      "name": "熱能循環：PP 回復 +15%",
+      "branch": "通用",
+      "tier": 2,
+      "evoStage": 16,
+      "effectType": "ppRegenPct",
+      "value": 15,
+      "maxRank": 1,
+      "requires": [],
+      "requiresAny": [
+        "sun_t1_mid",
+        "claw_t1_mid"
+      ],
+      "exclusiveGroup": null,
+      "uiPlacement": "between:sun_t1_mid|claw_t1_mid"
+    },
+    {
+      "id": "bridge_claw_wing",
+      "name": "衝刺本能：閃焰衝鋒冷卻 -15%",
+      "branch": "通用",
+      "tier": 2,
+      "evoStage": 16,
+      "effectType": "moveCooldownPct",
+      "value": {
+        "move": "flame_charge",
+        "pct": -15
+      },
+      "maxRank": 1,
+      "requires": [],
+      "requiresAny": [
+        "claw_t1_mid",
+        "wing_t1_mid"
+      ],
+      "exclusiveGroup": null,
+      "uiPlacement": "between:claw_t1_mid|wing_t1_mid"
     }
   ]
 }

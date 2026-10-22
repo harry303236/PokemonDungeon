@@ -1,5 +1,5 @@
 {
-  "_doc": "effectType -> display label. fmt: pct = '+N%', flat = '+N', frac = value is a fraction shown as '+N×100%', flag = label only, none = hidden. {v} = value.",
+  "_doc": "effectType -> display label. fmt: pct = '+N%', flat = '+N', frac = value is a fraction shown as '+N×100%', flag = label only, none = hidden. {v} = value. tpl = object value rendered via 'tpl' with {key} placeholders (rank-scaled numbers). cap = meta.mechanics key whose cap applies (tooltip shows effective post-cap total).",
   "atkPct": {
     "label": "攻擊",
     "fmt": "pct"
@@ -14,7 +14,9 @@
   },
   "speedPct": {
     "label": "移動速度",
-    "fmt": "pct"
+    "fmt": "pct",
+    "cap": "moveSpeedCapPct",
+    "stat": "moveSpeed"
   },
   "critPct": {
     "label": "暴擊率",
@@ -103,5 +105,69 @@
   "none": {
     "label": "",
     "fmt": "none"
+  },
+  "moveSpeedPct": {
+    "label": "移動速度",
+    "fmt": "pct",
+    "cap": "moveSpeedCapPct",
+    "stat": "moveSpeed"
+  },
+  "defensePct": {
+    "label": "防禦",
+    "fmt": "pct"
+  },
+  "maxHpPct": {
+    "label": "最大 HP",
+    "fmt": "pct"
+  },
+  "dodgeCooldownPct": {
+    "label": "閃避冷卻",
+    "fmt": "pct"
+  },
+  "cooldownReductionPct": {
+    "label": "技能冷卻縮減",
+    "fmt": "pct",
+    "cap": "cooldownReductionCapPct",
+    "stat": "cdr"
+  },
+  "damageTakenPct": {
+    "label": "受到傷害",
+    "fmt": "pct",
+    "cap": "damageTakenReductionCapPct",
+    "stat": "dr"
+  },
+  "hpRegenPctPerSec": {
+    "label": "每秒回復最大 HP",
+    "fmt": "pct"
+  },
+  "consumableEffectPct": {
+    "label": "道具效果",
+    "fmt": "pct"
+  },
+  "onDodgeMoveSpeed": {
+    "label": "閃避後加速",
+    "fmt": "tpl",
+    "tpl": "閃避後 {sec} 秒移動速度 +{pct}%",
+    "cap": "moveSpeedCapPct",
+    "stat": "moveSpeed"
+  },
+  "onKillCdRefundSec": {
+    "label": "擊殺減少技能冷卻",
+    "fmt": "tpl",
+    "tpl": "擊殺時所有技能冷卻 -{v} 秒（每秒最多 {limit} 秒）"
+  },
+  "lowHpDamageTakenPct": {
+    "label": "低血減傷",
+    "fmt": "tpl",
+    "tpl": "生命低於 {threshold}% 時受到傷害 {pct}%",
+    "cap": "damageTakenReductionCapPct",
+    "stat": "dr"
+  },
+  "moveCooldownPct": {
+    "label": "技能冷卻",
+    "fmt": "tpl",
+    "tpl": "{moveName}冷卻 {pct}%",
+    "cap": "cooldownReductionCapPct",
+    "stat": "cdr"
   }
 }

@@ -8,8 +8,8 @@ import { newChain } from '../src/core/events/event-bus';
 const mkBuild = (level = 10, evo = 1, debug = true) => { const s = newBuildSave(); const ctx = { level, evoStage1: evo }; const b = new Build(s, () => ctx); b.debug = debug; return { b, s, ctx }; };
 
 describe('talent data validation', () => {
-  it('shipped design file is valid (28 nodes)', () => {
-    expect(TALENTS.nodes.length).toBe(28);
+  it('shipped design file is valid (41 nodes incl. utility)', () => {
+    expect(TALENTS.nodes.length).toBe(41);
     expect(validateTalentData(TALENTS)).toEqual([]);
   });
   it('catches unknown requires, bad rank, bad evoStage, keystone w/o group, cycles', () => {
@@ -328,5 +328,76 @@ describe('talent plan/confirm + tooltip lines', () => {
     const n = N('claw_t1_0'); const v = n.value as number;
     expect(effectLine(n, 1)).toContain(`目前 +${v}`); expect(effectLine(n, 1)).toContain(`下一級 +${v * 2}`);
     expect(N('ks_solarPower').drawback).toBeTruthy(); expect(N('ks_blaze').drawback).toBe('加成要靠失去生命，血量低時很危險'); expect(N('ks_skyGlide').drawback).toBeUndefined();
+  });
+});
+
+import { moveSpeedPct, cdrPct, damageReductionPct, levelReq } from '../src/core/build/talents';
+import { capLine } from '../src/core/build/talent-plan';
+describe('utility branch: caps, additive DR, on-kill CD limiter (all from data)', () => {
+  const M = mechanics(TALENTS); const N = (id: string) => TALENTS.nodes.find((n) => n.id === id)!;
+  it('caps come from meta.mechanics', () => { expect(M.cooldownReductionCapPct).toBe(TALENTS.meta.mechanics!.cooldownReductionCapPct); expect(M.moveSpeedCapPct).toBe(TALENTS.meta.mechanics!.moveSpeedCapPct); expect(M.damageTakenReductionCapPct).toBe(TALENTS.meta.mechanics!.damageTakenReductionCapPct); });
+  it.each([
+    // [alloc, buff, expected raw, capped]
+    [{ util_move: 3 }, 0, 9, false],
+    [{ util_move: 3, wing_t1_0: 3 }, 0, null, null],
+    [{ util_move: 3 }, 100, 109, true],
+  ])('move speed sums then caps: %j + buff %d', (alloc, buff, raw, capped) => {
+    const b = talentBonuses(TALENTS, alloc as Record<string, number>); const c = moveSpeedPct(b, M, buff as number);
+    if (raw !== null) expect(c.raw).toBe(raw); expect(c.value).toBe(Math.min(c.raw, M.moveSpeedCapPct)); if (capped !== null) expect(c.capped).toBe(capped);
+  });
+  it.each([
+    [{ util_cdr: 5 }, undefined, 15, false],
+    [{ util_cdr: 5, bridge_claw_wing: 1 }, 'flame_charge', 30, null],
+  ])('CDR global + per-move summed then capped: %j', (alloc, key, raw, capped) => {
+    const c = cdrPct(talentBonuses(TALENTS, alloc as Record<string, number>), M, key as string | undefined);
+    expect(c.raw).toBe(raw); expect(c.value).toBe(Math.min(raw as number, M.cooldownReductionCapPct)); if (capped !== null) expect(c.capped).toBe(capped);
+    const big = talentBonuses(TALENTS, alloc as Record<string, number>); big.cdrPct += 100; expect(cdrPct(big, M, key as string | undefined).value).toBe(M.cooldownReductionCapPct);
+  });
+  it.each([
+    // [alloc, hpFrac, expected DR before cap]
+    [{ util_res: 5 }, 1, 10],
+    [{ util_res: 5, util_n_guts: 1 }, 1, 10],      // guts inactive above threshold
+    [{ util_res: 5, util_n_guts: 1 }, 0.2, 25],    // additive 10 + 15 (not multiplicative 23.5)
+  ])('damage reduction stacks additively: %j @hp %d', (alloc, hp, raw) => {
+    const c = damageReductionPct(talentBonuses(TALENTS, alloc as Record<string, number>), M, hp as number); expect(c.raw).toBeCloseTo(raw as number); expect(c.capped).toBe(false);
+  });
+  it('damage reduction cap applies after summing', () => {
+    const b = talentBonuses(TALENTS, { util_res: 5, util_n_guts: 1 }); b.damageTakenPct -= 30; const c = damageReductionPct(b, M, 0.1);
+    expect(c.raw).toBeCloseTo(55); expect(c.value).toBe(M.damageTakenReductionCapPct); expect(c.capped).toBe(true);
+    expect(capLine(N('util_res'), b, M, 0.1)).toContain('已達上限');
+  });
+  it('sim applies DR to incoming damage', () => {
+    const sim = new Sim(newProgress(3)); sim.build.s.talents = { util_res: 5 }; sim.refreshBuild(); // DR only (no def%) to isolate
+    const P = sim.player; P.hp = P.maxHp = 1e6; P.iframes = 0; const m = sim.world.query('monster')[0]!;
+    const rngSeq = [0.5]; (sim as unknown as { rng: { next: () => number } }).rng = { next: () => rngSeq[0]! };
+    sim.hit(m, P, 'tackle', 1, undefined, { rootId: 1, depth: 0, seen: new Set() } as never); const withDr = sim.lastPlayerDmg;
+    sim.build.s.talents = {}; sim.refreshBuild(); P.iframes = 0; sim.hit(m, P, 'tackle', 1, undefined, { rootId: 2, depth: 0, seen: new Set() } as never);
+    expect(withDr).toBe(Math.max(1, Math.round(sim.lastPlayerDmg * 0.9)));
+  });
+  it.each([
+    // [kills per frame pattern (frames of 1/60 s), expected total refunded]
+    ['3 kills same frame -> 1 trigger', [3], 0.5],
+    ['1 kill/frame x 10 frames within 1 s -> capped 1.5 s', [1, 1, 1, 1, 1, 1, 1, 1, 1, 1], 1.5],
+  ])('戰鬥節奏 limiter: %s', (_n, frames, total) => {
+    const sim = new Sim(newProgress(3)); sim.build.s.talents = { root: 1, util_move: 1, util_cdr: 1, util_n_rhythm: 1 }; sim.refreshBuild();
+    let sum = 0; for (const k of frames as number[]) { sim.frameNo++; sim.time += 1 / 60; for (let i = 0; i < k; i++) sum += sim.onKillRefund(); }
+    expect(sum).toBeCloseTo(total as number);
+  });
+  it('limiter window rolls: after 1 s refunds are available again', () => {
+    const sim = new Sim(newProgress(3)); sim.build.s.talents = { root: 1, util_move: 1, util_cdr: 1, util_n_rhythm: 1 }; sim.refreshBuild();
+    for (let i = 0; i < 5; i++) { sim.frameNo++; sim.onKillRefund(); } sim.time += 1.01; sim.frameNo++; expect(sim.onKillRefund()).toBeCloseTo(0.5);
+  });
+  it('bridge nodes: requiresAny + level gate 16', () => {
+    expect(levelReq(TALENTS, N('bridge_sun_claw'))).toBe(16);
+    expect(canAllocate(TALENTS, { root: 1 }, 'bridge_sun_claw', { level: 20, evoStage: 2 }).ok).toBe(false);
+    const a = { root: 1, claw_t1_0: 1, claw_t1_1: 1, claw_t1_mid: 1 };
+    expect(canAllocate(TALENTS, a, 'bridge_sun_claw', { level: 15, evoStage: 1 }).ok).toBe(false);
+    expect(canAllocate(TALENTS, a, 'bridge_sun_claw', { level: 20, evoStage: 2 }).ok).toBe(true);
+  });
+  it('click-to-move at capped speed arrives exactly (no overshoot)', () => {
+    const sim = new Sim(newProgress(3)); sim.build.s.talents = { root: 1, util_move: 3 }; sim.bon = talentBonuses(TALENTS, {}); sim.bon.speedPct = 500; // way over cap
+    const spd = sim.moveSpeed(); const base = spd / (1 + M.moveSpeedCapPct / 100); expect(spd).toBeCloseTo(base * (1 + M.moveSpeedCapPct / 100));
+    const P = sim.player; const tx = P.x + 37, ty = P.y; (sim as unknown as { stepAlong: (p: { x: number; y: number }[], dt: number) => void }).stepAlong([{ x: tx, y: ty }], 1);
+    expect(P.x).toBeCloseTo(tx); expect(P.y).toBeCloseTo(ty);
   });
 });
