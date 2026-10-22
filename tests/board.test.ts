@@ -338,3 +338,43 @@ describe('v4 labels', () => {
     for (const a of B.raw.ascendancy) expect(BOARD_EFFECTS[a.effectType], a.id).toBeTruthy();
   });
 });
+
+import { dodgeCdrPct } from '../src/core/build/talents';
+import { jewelImplicit } from '../src/core/build/board';
+describe('legendary jewel implicits (data: jewels.legendary[].implicit)', () => {
+  const M = mechanics({ meta: { mechanics: {} } } as never, B.meta.mechanics as never);
+  const pathTo = (id: string) => shortestPath(B, START, id)!.slice(1);
+  const ROWS = [
+    { base: 'jw_solar_lens', sock: 'util_jewel', stat: 'sunDurationSec' as const },
+    { base: 'jw_dragon_heart', sock: 'util_jewel', stat: 'meleeLifestealPct' as const },
+    { base: 'jw_tailwind', sock: 'util_jewel', stat: 'dodgeCdPct' as const },
+  ];
+  it.each(ROWS)('$base implicit applies when the socket is live, regardless of in-range nodes, and turns off when disconnected', (r) => {
+    const imp = jewelImplicit(r.base)!; expect(imp).toBeTruthy();
+    const nodes = pathTo(r.sock); const j: JewelItem = { uid: 'i1', base: r.base };
+    const base = boardBonuses(B, st(nodes))[r.stat];
+    // only the path to the socket is allocated (minimal), implicit still applies
+    const on = boardBonuses(B, st(nodes, { jewels: [j], sockets: { [r.sock]: 'i1' } }));
+    expect(on[r.stat] - base).toBeCloseTo(imp.value);
+    const cut = nodes.filter((x) => x !== nodes[0]);
+    const off = boardBonuses(B, st(cut, { jewels: [j], sockets: { [r.sock]: 'i1' } }));
+    expect(off[r.stat]).toBe(boardBonuses(B, st(cut))[r.stat]);
+  });
+  it('values come from data: +2 s sun, 1.5% melee leech, -12% dodge CD', () => {
+    expect(jewelImplicit('jw_solar_lens')).toMatchObject({ effectType: 'sunDurationSec', value: 2 });
+    expect(jewelImplicit('jw_dragon_heart')).toMatchObject({ effectType: 'meleeLifestealPct', value: 1.5 });
+    expect(jewelImplicit('jw_tailwind')).toMatchObject({ effectType: 'dodgeCooldownPct', value: -12 });
+  });
+  it('順風羽 dodge CD reduction counts toward the shared CDR cap', () => {
+    const s = st(pathTo('wing_jewel'), { jewels: [{ uid: 'w', base: 'jw_tailwind' }], sockets: { wing_jewel: 'w' } });
+    const b = boardBonuses(B, s); expect(dodgeCdrPct(b, M).value).toBe(-b.dodgeCdPct);
+    b.dodgeCdPct -= 100; const c = dodgeCdrPct(b, M); expect(c.capped).toBe(true); expect(c.value).toBe(M.cooldownReductionCapPct);
+  });
+  it('sim: 聚光鏡 implicit extends sunny day by +2 s; 順風羽 shortens dodge CD; 龍心 leech heals', () => {
+    const mk = (base: string, sock: string) => { const sim = new Sim(newProgress(3)); sim.build.s.board.nodes = pathTo(sock); sim.build.s.board.jewels = [{ uid: 'x', base }]; sim.build.s.board.sockets = { [sock]: 'x' }; sim.refreshBuild(); return sim; };
+    const plain = new Sim(newProgress(3)); plain.setSun(10); const lens = mk('jw_solar_lens', 'util_jewel'); lens.setSun(10);
+    expect(lens.sunT - plain.sunT).toBeCloseTo(2);
+    expect(mk('jw_dragon_heart', 'util_jewel').bon.meleeLifestealPct).toBeCloseTo(1.5);
+    expect(mk('jw_tailwind', 'util_jewel').bon.dodgeCdPct).toBeLessThanOrEqual(-12);
+  });
+});

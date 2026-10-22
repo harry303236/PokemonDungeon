@@ -68,12 +68,12 @@ export interface PlayerBonuses {
   maxHpPct: number; cdrPct: number; damageTakenPct: number; consumablePct: number; oocRegen: { delaySec: number; pct: number } | null;
   onDodgeSpeed: { pct: number; sec: number } | null; onKillCdRefundSec: number; lowHpDr: { threshold: number; pct: number } | null; moveCdPct: Record<string, number>;
   // v4 board extras (handled by BOARD_EFFECTS in board.ts; v3 registry unchanged)
-  fireDmgPct: number; sunBurnDmgPct: number; sunDurationPct: number; dodgeIgnite: number; onHitTakenAtk: { pct: number; sec: number } | null; asc: AscBonuses;
+  fireDmgPct: number; sunBurnDmgPct: number; sunDurationSec: number; sunDurationPct: number; dodgeIgnite: number; onHitTakenAtk: { pct: number; sec: number } | null; asc: AscBonuses;
   keystones: Set<string>; /** move-pipeline modifiers contributed by talents */ moveMods: Modifier[];
 }
 export const emptyBonuses = (): PlayerBonuses => ({ fireCritPct: 0, critDmgPct: 0, burnConsumeMultPct: 0, stunDurPct: 0, projSpeedPct: 0, flameChargeHits: 0, comboStack: 0, trailIgnite: 0, trailDmgPct: 0, atkPct: 0, spAtkPct: 0, defPct: 0, speedPct: 0, critPct: 0, burnChancePct: 0, burnDmgPct: 0, ppRegenPct: 0,
   dodgeCdPct: 0, evasionPct: 0, meleeLifestealPct: 0, burnSpread: 0,
-  maxHpPct: 0, cdrPct: 0, damageTakenPct: 0, consumablePct: 0, oocRegen: null, onDodgeSpeed: null, onKillCdRefundSec: 0, lowHpDr: null, moveCdPct: {}, fireDmgPct: 0, sunBurnDmgPct: 0, sunDurationPct: 0, dodgeIgnite: 0, onHitTakenAtk: null, asc: {}, keystones: new Set(), moveMods: [] });
+  maxHpPct: 0, cdrPct: 0, damageTakenPct: 0, consumablePct: 0, oocRegen: null, onDodgeSpeed: null, onKillCdRefundSec: 0, lowHpDr: null, moveCdPct: {}, fireDmgPct: 0, sunBurnDmgPct: 0, sunDurationSec: 0, sunDurationPct: 0, dodgeIgnite: 0, onHitTakenAtk: null, asc: {}, keystones: new Set(), moveMods: [] });
 
 /** Ascendancy effects (v4). Entry node gives the main effect. */
 export interface AscBonuses {
@@ -137,6 +137,8 @@ export const burnBonusPct = (b: PlayerBonuses, m: TalentMechanics, sunny: boolea
 export const projSpeedPct = (b: PlayerBonuses, m: TalentMechanics): Capped => capUp(b.projSpeedPct, m.projSpeedCapPct);
 /** Fire-trail damage % (incl. 順風羽), capped (trailDmgCapPct). */
 export const trailDmgPct = (b: PlayerBonuses, m: TalentMechanics): Capped => capUp(b.trailDmgPct, m.trailDmgCapPct);
+/** Dodge cooldown reduction % (negative dodgeCdPct summed, incl. 順風羽 implicit), capped by the shared CDR cap (cooldownReductionCapPct). */
+export const dodgeCdrPct = (b: PlayerBonuses, m: TalentMechanics): Capped => capUp(-b.dodgeCdPct, m.cooldownReductionCapPct);
 export interface Capped { raw: number; value: number; capped: boolean; cap: number }
 const capUp = (raw: number, cap: number): Capped => ({ raw, value: Math.min(raw, cap), capped: raw > cap, cap });
 /** Move speed % (static talents + temporary buffs) -> capped. */

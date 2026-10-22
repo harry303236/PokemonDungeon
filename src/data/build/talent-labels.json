@@ -255,5 +255,10 @@
   "dragonAuraCritDmgPct": {
     "label": "龍氣必暴擊的暴擊傷害",
     "fmt": "pct"
+  },
+  "sunDurationSec": {
+    "label": "晴天持續時間",
+    "fmt": "tpl",
+    "tpl": "晴天持續時間 +{v} 秒"
   }
 }

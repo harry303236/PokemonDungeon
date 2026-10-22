@@ -1354,20 +1354,37 @@
       {
         "id": "jw_solar_lens",
         "name": "聚光鏡",
+        "implicit": {
+          "effectType": "sunDurationSec",
+          "value": 2,
+          "text": "晴天持續時間 +2 秒"
+        },
         "rule": "範圍內的小節點：特攻類效果改為「晴天時」同數值的燃燒傷害 ×2"
       },
       {
         "id": "jw_dragon_heart",
         "name": "龍心",
+        "implicit": {
+          "effectType": "meleeLifestealPct",
+          "value": 1.5,
+          "text": "近戰傷害的 1.5% 轉為生命回復"
+        },
         "rule": "範圍內的小節點：防禦類效果改為同數值的攻擊力"
       },
       {
         "id": "jw_tailwind",
         "name": "順風羽",
+        "implicit": {
+          "effectType": "dodgeCooldownPct",
+          "value": -12,
+          "text": "閃避冷卻 -12%"
+        },
         "rule": "範圍內的小節點：跑速類效果同時套用到投射物速度和火尾傷害"
       }
     ],
     "rules": [
+      "傳奇珠寶的 implicit 固定效果只要孔已點亮就生效，不受範圍內節點有無影響；同樣套用 meta.mechanics 上限",
+      "珠寶欄中與已鑲嵌傳奇同名的珠寶顯示灰色並標註「已有同名珠寶鑲嵌」",
       "半徑固定 300（盤面座標單位），範圍內節點由產生腳本預先算好寫在 affectsNodes，遊戲只讀這份清單，不在執行時重算",
       "同一顆小節點最多被一顆傳奇珠寶轉換，落在多個孔範圍時以距離最近的孔為準（同距離取 id 字母序較前者）",
       "同一種傳奇珠寶全盤只能插一顆",

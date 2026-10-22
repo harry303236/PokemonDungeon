@@ -11,7 +11,7 @@ import { TALENTS, engineMoveId, Build, ensureBuild, moveTags, MOVE_TAGS, STATUSE
 import { baseSpec, buildMoveSpec, dmgFactor, areaFactor, type Modifier, type MoveSpec } from './build/pipeline';
 import { BOARD, JEWEL_RULES, type JewelItem } from './build/board';
 import { typeMult } from './combat/type-chart';
-import { emptyBonuses, mechanics, moveSpeedPct, cdrPct, damageReductionPct, burnBonusPct, projSpeedPct, trailDmgPct, type PlayerBonuses } from './build/talents';
+import { emptyBonuses, mechanics, moveSpeedPct, cdrPct, damageReductionPct, burnBonusPct, projSpeedPct, trailDmgPct, dodgeCdrPct, type PlayerBonuses } from './build/talents';
 import { findPath, clampToFloor, hasLineOfSight, type Pt } from './dungeon/pathfind';
 import { rollItem, canEquip, type Item, type ItemSlot } from './loot/loot-roller';
 import { monster as monsterData, move as moveData, species as speciesData, MONSTERS } from '../data/registry';
@@ -260,7 +260,7 @@ export class Sim {
       p.dash = { t: 0.2, dirX: dx / (cmd.moveX || cmd.moveY ? len : 1), dirY: dy / (cmd.moveX || cmd.moveY ? len : 1), speed: 650, hit: false };
       if (this.bon.asc.flight) { p.dash.flight = true; p.iframes = Math.max(p.iframes ?? 0, this.bon.asc.flight.invulnSec); }
       this.dodgeIgnited.clear();
-      p.iframes = Math.max(p.iframes ?? 0, 0.3); if (this.bon.onDodgeSpeed) this.dodgeBuffUntil = this.time + 0.2 + this.bon.onDodgeSpeed.sec; this.dodgeCd = 0.9 * Math.max(0.2, 1 + this.bon.dodgeCdPct / 100);
+      p.iframes = Math.max(p.iframes ?? 0, 0.3); if (this.bon.onDodgeSpeed) this.dodgeBuffUntil = this.time + 0.2 + this.bon.onDodgeSpeed.sec; this.dodgeCd = 0.9 * Math.max(0.2, 1 - dodgeCdrPct(this.bon, this.mech).value / 100);
       return;
     }
     if (cmd.moveTo) this.orderMove(cmd.moveTo.x, cmd.moveTo.y);
@@ -605,7 +605,7 @@ export class Sim {
     return k;
   }
   /** start Sunny Day (晴空延長 sunDurationPct scales it) */
-  setSun(sec: number): void { this.sunT = sec * (1 + this.bon.sunDurationPct / 100); }
+  setSun(sec: number): void { this.sunT = sec * (1 + this.bon.sunDurationPct / 100) + this.bon.sunDurationSec; }
   debugSun(sec = 10): void { this.setSun(sec); }
 
   applyBurn(t: Entity, src: number): void {

@@ -18,7 +18,7 @@ export interface AscNode { id: string; name: string; entry?: boolean; effectType
 export interface TrunkMove { move: string; learnLevel: number; maxRank: number; enhance: string; variantAtRank: number; note?: string }
 export interface BoardRaw {
   meta: { pointsPerLevel: number; totalPoints: number; ascendancyPoints: Record<string, number>; respec: { freeBeforeLevel: number }; mechanics?: Record<string, number | string>; [k: string]: unknown };
-  moveTrunk: TrunkMove[]; nodes: BoardNode[]; edges: [string, string][]; ascendancy: AscNode[]; jewels: { legendary: { id: string; name: string; rule: string }[]; rules: string[]; normal: Record<string, unknown> };
+  moveTrunk: TrunkMove[]; nodes: BoardNode[]; edges: [string, string][]; ascendancy: AscNode[]; jewels: { legendary: { id: string; name: string; rule: string; implicit?: Implicit }[]; rules: string[]; normal: Record<string, unknown> };
 }
 export interface JewelItem { uid: string; base: string; affixes?: { effectType: string; value: number }[] }
 export interface BoardState { nodes: string[]; moves: Record<string, number>; asc: string[]; jewels: JewelItem[]; sockets: Record<string, string> }
@@ -126,6 +126,9 @@ export function canRefundAsc(b: Board, s: BoardState, id: string): Res {
 }
 
 // ---------- jewels ----------
+export interface Implicit { effectType: string; value: number; text?: string }
+/** Fixed implicit of a legendary jewel (data: jewels.legendary[].implicit). Active whenever the socket is live, independent of in-range nodes. */
+export const jewelImplicit = (base: string, b: Board = BOARD): Implicit | undefined => b.raw.jewels.legendary.find((l) => l.id === base)?.implicit;
 export const isLegendary = (j: JewelItem): boolean => !!JEWEL_RULES.legendary[j.base];
 export interface Conversion { id: string; jewel: string; before: Effect; after: Effect[]; active: boolean }
 function convert(n: BoardNode, base: string): Effect[] | null {
@@ -162,7 +165,7 @@ const asc = (k: string, f: (v: Record<string, number> & number) => unknown): Han
 export const BOARD_EFFECTS: Record<string, Handler> = {
   ...TALENT_EFFECTS,
   jewelSocket: () => {},
-  fireDmgPct: pct('fireDmgPct'), sunBurnDmgPct: pct('sunBurnDmgPct'), sunDurationPct: pct('sunDurationPct'), dodgeIgnite: pct('dodgeIgnite'),
+  sunDurationSec: pct('sunDurationSec'), fireDmgPct: pct('fireDmgPct'), sunBurnDmgPct: pct('sunBurnDmgPct'), sunDurationPct: pct('sunDurationPct'), dodgeIgnite: pct('dodgeIgnite'),
   areaPct: (b, total) => { b.moveMods.push({ source: 'board:areaPct', stage: 'numeric', apply: (s) => { s.areaPct += total; } }); },
   /** attack speed = basic-attack cooldown reduction, summed into that move's CDR (still capped) */
   attackSpeedPct: (b, total) => { b.moveCdPct.ember = (b.moveCdPct.ember ?? 0) - total; },
@@ -194,7 +197,8 @@ export function boardBonuses(b: Board, s: BoardState, engineId: (m: string) => s
   const out = emptyBonuses(); const conv = conversionsFor(b, s); const alloc = new Set(s.nodes);
   for (const id of s.nodes) { if (!b.nodes.has(id)) continue; for (const e of nodeEffects(b, s, id, conv)) applyEffect(out, e, id); }
   const reach = reachableFromStart(b, new Set(s.nodes)); void alloc;
-  for (const [sock, uid] of Object.entries(s.sockets)) { if (!socketActive(b, s, sock, reach)) continue; const j = s.jewels.find((x) => x.uid === uid); for (const a of j?.affixes ?? []) applyEffect(out, a, `jewel:${uid}`); }
+  for (const [sock, uid] of Object.entries(s.sockets)) { if (!socketActive(b, s, sock, reach)) continue; const j = s.jewels.find((x) => x.uid === uid); for (const a of j?.affixes ?? []) applyEffect(out, a, `jewel:${uid}`);
+    const imp = j && jewelImplicit(j.base, b); if (imp) applyEffect(out, imp, `implicit:${uid}`); }
   for (const [m, r] of Object.entries(s.moves)) if (r >= 2) MOVE_ENHANCE[m]?.(out, engineId(m));
   for (const id of s.asc) { const n = b.asc.get(id); if (n) applyEffect(out, n, id); }
   return out;

@@ -2,7 +2,7 @@ import type Phaser from 'phaser';
 import type { Sim } from '../../core/sim';
 import { fullResetCost, RESPEC_FREE_BEFORE, engineMoveId } from '../../core/build/build';
 import {
-  BOARD, ascPointsTotal, boardPointsSpent, canAllocNode, canRefundNode, canAllocAsc, conversionsFor, socketActive, previewConversion, isLegendary,
+  BOARD, ascPointsTotal, boardPointsSpent, canAllocNode, canRefundNode, canAllocAsc, conversionsFor, socketActive, jewelImplicit, previewConversion, isLegendary,
   type BoardNode, type Effect, type JewelItem, type Conversion,
 } from '../../core/build/board';
 import { emptyPlan, mergedState, planEmpty, planCost, planRefunds, stageAddNode, stageRemoveNode, stageMove, applyPlan, type BoardPlan } from '../../core/build/board-plan';
@@ -70,6 +70,13 @@ export class TalentBoardController {
   private jewelLive(uid: string): boolean { const k = Object.entries(this.b.s.board.sockets).find(([, u]) => u === uid)?.[0]; return !!k && this.socketLive(k); }
   /** Another copy of this legendary is already socketed somewhere (one-per-type rule) and this copy isn't it. */
   private dupBlocked(j: JewelItem): boolean { return isLegendary(j) && !this.b.socketedUids().has(j.uid) && Object.values(this.b.s.board.sockets).some((u) => this.b.s.board.jewels.find((x) => x.uid === u)?.base === j.base); }
+  /** '固定效果：晴天持續時間 +2 秒' — live=null: not socketed (no state suffix). */
+  private implicitLine(j: JewelItem, live: boolean | null): string {
+    const imp = jewelImplicit(j.base); if (!imp) return '';
+    const t = effText({ effectType: imp.effectType, value: imp.value }) || imp.text || '';
+    const st = live === null ? '（鑲嵌且孔連通時生效）' : live ? '' : '（未生效）';
+    return `<div style="color:${live === false ? '#9a948c' : '#ffd27a'};margin:2px 0">固定效果：${esc(t)}<span style="font-size:11px;color:#a99">${st}</span></div>`;
+  }
   private pickedJewel(): JewelItem | undefined { return this.b.s.board.jewels.find((j) => j.uid === this.picked); }
   private socketed(sock: string): JewelItem | undefined { const uid = this.b.s.board.sockets[sock]; return this.b.s.board.jewels.find((j) => j.uid === uid); }
 
@@ -228,7 +235,7 @@ export class TalentBoardController {
       const j = s.jewels.find((x) => x.uid === this.hoverJewel); if (!j) return '';
       const inSock = this.b.socketedUids().has(j.uid);
       if (this.dupBlocked(j)) return head(jewelName(j), '傳奇珠寶 · 轉換型') + line('已有同名珠寶鑲嵌', '#ff7a6a') + line('同種傳奇珠寶全盤只能鑲嵌一顆；先取下已鑲嵌的那顆才能改用這顆', '#a99', 'font-size:12px;margin-top:4px');
-      return head(jewelName(j), isLegendary(j) ? '傳奇珠寶 · 轉換型' : '珠寶 · 數值詞綴') + (inSock && !this.jewelLive(j.uid) ? line('未生效：所在珠寶孔沒有連到起點', '#ff7a6a') : '') + (isLegendary(j) ? line(esc(LEG.get(j.base)?.rule ?? '')) + line('只轉換範圍內已點亮的小型天賦（每顆節點最多被最近的一顆傳奇珠寶轉換）；轉換後仍套用上限；同種傳奇全盤限一顆', '#a99', 'font-size:11px;margin-top:4px')
+      return head(jewelName(j), isLegendary(j) ? '傳奇珠寶 · 轉換型' : '珠寶 · 數值詞綴') + (inSock && !this.jewelLive(j.uid) ? line('未生效：所在珠寶孔沒有連到起點', '#ff7a6a') : '') + (isLegendary(j) ? this.implicitLine(j, inSock ? this.jewelLive(j.uid) : null) + line(esc(LEG.get(j.base)?.rule ?? '')) + line('只轉換範圍內已點亮的小型天賦（每顆節點最多被最近的一顆傳奇珠寶轉換）；轉換後仍套用上限；同種傳奇全盤限一顆', '#a99', 'font-size:11px;margin-top:4px')
         : (j.affixes ?? []).map((a) => line(esc(fmtVal(a.value, a.effectType)))).join('')) + line(this.picked === j.uid ? '已選取：點擊已點亮的珠寶孔鑲嵌' : '點擊選取後鑲嵌到珠寶孔', '#7fd8ff', 'margin-top:8px');
     }
     if (this.hoverId?.startsWith('asc:')) {
@@ -241,12 +248,13 @@ export class TalentBoardController {
     if (n.kind === 'jewel') {
       const sj = this.socketed(n.id); const pj = this.pickedJewel();
       if (sj && !this.socketLive(n.id)) body += line('未生效：珠寶孔沒有連到起點，效果已關閉（珠寶仍在孔內）', '#ff7a6a');
-      body += sj ? line(`已鑲嵌：<b>${esc(jewelName(sj))}</b>`, '#9fd0ff') + (isLegendary(sj) ? '' : (sj.affixes ?? []).map((a) => line(esc(fmtVal(a.value, a.effectType)))).join('')) : line('空的珠寶孔', '#a99');
+      body += sj ? line(`已鑲嵌：<b>${esc(jewelName(sj))}</b>`, '#9fd0ff') + (isLegendary(sj) ? this.implicitLine(sj, this.socketLive(n.id)) : (sj.affixes ?? []).map((a) => line(esc(fmtVal(a.value, a.effectType)))).join('')) : line('空的珠寶孔', '#a99');
       const j = pj ?? sj;
       if (j && isLegendary(j)) {
         const rows = previewConversion(BOARD, n.id, j, m);
         body += line(`${pj ? '插入預覽' : '轉換'}（${esc(jewelName(j))}）：範圍內 ${rows.length} 個小型天賦`, '#ffe066', 'margin-top:6px');
         body += rows.length ? rows.map((r) => convRow(r)).join('') : line('範圍內沒有可轉換的小型天賦', '#9a948c', 'font-size:12px');
+        if (pj && isLegendary(pj)) body += this.implicitLine(pj, null);
       } else if (pj) body += line('數值珠寶：詞綴直接生效，不轉換節點', '#a99', 'font-size:12px;margin-top:6px');
       body += line(pj ? (m.nodes.includes(n.id) ? '左鍵鑲嵌' : '需要先點亮此珠寶孔') : sj ? '右鍵取下珠寶' : '選取下方珠寶後點擊鑲嵌', '#7fd8ff', 'margin-top:8px');
     } else {
