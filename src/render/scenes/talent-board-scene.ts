@@ -110,7 +110,12 @@ export class TalentBoardScene extends Phaser.Scene {
     }
     const hl = this.ctrl.highlights();
     if (hl.socket) { const s = BOARD.nodes.get(hl.socket)!; r.lineStyle(3, 0x7fd8ff, 0.55); r.strokeCircle(s.pos.x, s.pos.y, s.radius ?? 0); r.fillStyle(0x7fd8ff, 0.05); r.fillCircle(s.pos.x, s.pos.y, s.radius ?? 0); }
-    for (const id of hl.nodes) { const n = BOARD.nodes.get(id)!; const o = this.objs.get(id)!; r.lineStyle(5, 0xffe066, pulse); r.strokeCircle(n.pos.x, n.pos.y, o.size * 0.5); }
+    // conversion preview: converted nodes flash (fast pulse + expanding ring)
+    const flash = 0.5 + 0.5 * Math.sin(this.t * 9); const ph = (this.t * 1.4) % 1;
+    for (const id of hl.nodes) { const n = BOARD.nodes.get(id)!; const o = this.objs.get(id)!;
+      r.fillStyle(0xffe066, 0.12 + 0.28 * flash); r.fillCircle(n.pos.x, n.pos.y, o.size * 0.5);
+      r.lineStyle(5, 0xffe066, 0.45 + 0.55 * flash); r.strokeCircle(n.pos.x, n.pos.y, o.size * 0.5);
+      r.lineStyle(3, 0xfff2a0, 1 - ph); r.strokeCircle(n.pos.x, n.pos.y, o.size * (0.5 + 0.45 * ph)); }
   }
   private dashed(g: Phaser.GameObjects.Graphics, x1: number, y1: number, x2: number, y2: number, c: number, w: number): void {
     const L = Math.hypot(x2 - x1, y2 - y1); const n = Math.max(1, Math.floor(L / 14)); g.lineStyle(w, c, 1);

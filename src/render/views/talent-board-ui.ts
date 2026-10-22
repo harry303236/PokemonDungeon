@@ -68,6 +68,8 @@ export class TalentBoardController {
   socketBase(sock: string): string | null { return this.socketed(sock)?.base ?? null; }
   socketLive(sock: string): boolean { return socketActive(BOARD, this.b.s.board, sock); }
   private jewelLive(uid: string): boolean { const k = Object.entries(this.b.s.board.sockets).find(([, u]) => u === uid)?.[0]; return !!k && this.socketLive(k); }
+  /** Another copy of this legendary is already socketed somewhere (one-per-type rule) and this copy isn't it. */
+  private dupBlocked(j: JewelItem): boolean { return isLegendary(j) && !this.b.socketedUids().has(j.uid) && Object.values(this.b.s.board.sockets).some((u) => this.b.s.board.jewels.find((x) => x.uid === u)?.base === j.base); }
   private pickedJewel(): JewelItem | undefined { return this.b.s.board.jewels.find((j) => j.uid === this.picked); }
   private socketed(sock: string): JewelItem | undefined { const uid = this.b.s.board.sockets[sock]; return this.b.s.board.jewels.find((j) => j.uid === uid); }
 
@@ -102,10 +104,10 @@ export class TalentBoardController {
         <div style="font-size:11px;color:${r >= 2 ? '#f2e2c0' : '#776'}">第 2 級：${esc(t.enhance)}</div>${variant}</div>`;
     }).join('');
     const socketedUids = b.socketedUids(); const trunkSpent = `${Object.values(m.moves).reduce((a, r) => a + r, 0)}/${BOARD.trunk.size * 3}`;
-    const jewels = b.s.board.jewels.map((j) => `<div data-jw="${j.uid}" style="${PANEL};cursor:pointer;display:flex;gap:6px;align-items:center;padding:4px 8px;min-width:120px;${this.picked === j.uid ? 'border-color:#ffe066;box-shadow:0 0 10px #ffe066' : ''}">
+    const jewels = b.s.board.jewels.map((j) => { const dup = this.dupBlocked(j); return `<div data-jw="${j.uid}" ${dup ? 'data-dup="1" ' : ''}style="${PANEL};cursor:${dup ? 'not-allowed;opacity:.42;filter:grayscale(1)' : 'pointer'};display:flex;gap:6px;align-items:center;padding:4px 8px;min-width:120px;${this.picked === j.uid ? 'border-color:#ffe066;box-shadow:0 0 10px #ffe066' : ''}">
         <img src="${ART}${jewelArt(j.base)}" style="width:30px;height:34px;object-fit:contain" draggable="false">
         <div style="font-size:12px;line-height:1.3"><b style="color:${isLegendary(j) ? '#ff9a3a' : '#9fd0ff'}">${esc(jewelName(j))}</b>${socketedUids.has(j.uid) ? (this.jewelLive(j.uid) ? ' <span style="color:#8c8;font-size:11px">已鑲嵌</span>' : ' <span style="color:#d88;font-size:11px">已鑲嵌（未生效）</span>') : ''}<br>
-        <span style="color:#aaa">${isLegendary(j) ? '傳奇 · 轉換' : (j.affixes ?? []).map((a) => esc(fmtVal(a.value, a.effectType))).join('、')}</span></div></div>`).join('') || '<span style="color:#776;pointer-events:auto">尚無珠寶（地城掉落）</span>';
+        <span style="color:#aaa">${dup ? '已有同名珠寶鑲嵌' : isLegendary(j) ? '傳奇 · 轉換' : (j.affixes ?? []).map((a) => esc(fmtVal(a.value, a.effectType))).join('、')}</span></div></div>`; }).join('') || '<span style="color:#776;pointer-events:auto">尚無珠寶（地城掉落）</span>';
     const sum = [...this.plan.add.map((id) => `<span style="color:#9fe0ff">+${esc(split(BOARD.nodes.get(id)!.name).title)}</span>`), ...this.plan.remove.map((id) => `<span style="color:#ff9a8a">−${esc(split(BOARD.nodes.get(id)!.name).title)}</span>`),
       ...Object.entries(this.plan.moves).map(([mv, d]) => `<span style="color:${d > 0 ? '#9fe0ff' : '#ff9a8a'}">${d > 0 ? '+' : '−'}${esc(DMOVES.find((x) => x.id === mv)?.name ?? mv)}×${Math.abs(d)}</span>`)].join('、');
     this.root.innerHTML = `
@@ -168,7 +170,7 @@ export class TalentBoardController {
       const [eng = '', v = ''] = (e.dataset.var ?? '').split('|'); b.chooseUpgrade(eng, 'variant', b.s.upgrades[eng]?.variant === v ? null : v); this.after(); this.render(); }));
     this.root.querySelectorAll<HTMLElement>('[data-jw]').forEach((e) => {
       const uid = e.dataset.jw ?? '';
-      e.addEventListener('click', () => { this.picked = this.picked === uid ? null : uid; this.render(); });
+      e.addEventListener('click', () => { if (e.dataset.dup) { this.msg = '已有同名珠寶鑲嵌'; this.render(); return; } this.picked = this.picked === uid ? null : uid; this.render(); });
       e.addEventListener('mouseenter', (ev) => { this.hoverJewel = uid; this.hoverId = null; this.mx = ev.clientX; this.my = ev.clientY; this.renderTip(); });
       e.addEventListener('mousemove', (ev) => { this.mx = ev.clientX; this.my = ev.clientY; this.placeTip(); });
       e.addEventListener('mouseleave', () => { this.hoverJewel = null; this.renderTip(); });
@@ -202,7 +204,21 @@ export class TalentBoardController {
   private placeTip(): void {
     const t = this.root.querySelector<HTMLDivElement>('#tb-tipbox'); if (!t) return; const W = window.innerWidth, H = window.innerHeight; const tw = t.offsetWidth, th = t.offsetHeight, OFF = 18;
     let x = this.mx + OFF; if (x + tw > W - 8) x = this.mx - OFF - tw; let y = this.my + OFF; if (y + th > H - 8) y = this.my - OFF - th;
+    const side = this.socketTipPos(tw, th, W, H); if (side) ({ x, y } = side);
     t.style.left = `${Math.max(8, x) + 44}px`; t.style.top = `${Math.max(8, Math.min(H - 8 - th, y)) + 44}px`;
+  }
+  /** Socket preview: put the tooltip beside the radius circle so it never covers the nodes that will convert. */
+  private socketTipPos(tw: number, th: number, W: number, H: number): { x: number; y: number } | null {
+    const hl = this.highlights(); if (!hl.socket || !this.scene) return null;
+    const r = this.host.game.canvas.getBoundingClientRect(); const z = this.scene.view().zoom; const S = (id: string) => { const p = this.scene!.worldToScreen(BOARD.nodes.get(id)!.pos.x, BOARD.nodes.get(id)!.pos.y); return { x: p.x + r.left, y: p.y + r.top }; };
+    const c = S(hl.socket); const R = (BOARD.nodes.get(hl.socket)!.radius ?? 0) * z; const pad = 40 * z + 10;
+    const pts = [c, ...hl.nodes.map(S)]; const box = { l: Math.min(...pts.map((p) => p.x)) - pad, r: Math.max(...pts.map((p) => p.x)) + pad, t: Math.min(...pts.map((p) => p.y)) - pad, b: Math.max(...pts.map((p) => p.y)) + pad };
+    const clampY = (y: number) => Math.max(50, Math.min(H - 8 - th, y)); const clampX = (x: number) => Math.max(8, Math.min(W - 8 - tw, x));
+    const cands = [{ x: c.x + R + 14, y: clampY(c.y - th / 2) }, { x: c.x - R - 14 - tw, y: clampY(c.y - th / 2) }, { x: clampX(c.x - tw / 2), y: c.y + R + 14 }, { x: clampX(c.x - tw / 2), y: c.y - R - 14 - th },
+      { x: box.r + 8, y: clampY(c.y - th / 2) }, { x: box.l - 8 - tw, y: clampY(c.y - th / 2) }, { x: clampX(c.x - tw / 2), y: box.b + 8 }, { x: clampX(c.x - tw / 2), y: box.t - 8 - th }];
+    const fits = (p: { x: number; y: number }) => p.x >= 8 && p.y >= 40 && p.x + tw <= W - 8 && p.y + th <= H - 8;
+    const clear = (p: { x: number; y: number }) => p.x > box.r || p.x + tw < box.l || p.y > box.b || p.y + th < box.t;
+    return cands.find((p) => fits(p) && clear(p)) ?? null;
   }
   private tipHtml(): string {
     const b = this.b; const sim = this.sim(); const s = b.s.board; const m = this.merged();
@@ -211,6 +227,7 @@ export class TalentBoardController {
     if (this.hoverJewel) {
       const j = s.jewels.find((x) => x.uid === this.hoverJewel); if (!j) return '';
       const inSock = this.b.socketedUids().has(j.uid);
+      if (this.dupBlocked(j)) return head(jewelName(j), '傳奇珠寶 · 轉換型') + line('已有同名珠寶鑲嵌', '#ff7a6a') + line('同種傳奇珠寶全盤只能鑲嵌一顆；先取下已鑲嵌的那顆才能改用這顆', '#a99', 'font-size:12px;margin-top:4px');
       return head(jewelName(j), isLegendary(j) ? '傳奇珠寶 · 轉換型' : '珠寶 · 數值詞綴') + (inSock && !this.jewelLive(j.uid) ? line('未生效：所在珠寶孔沒有連到起點', '#ff7a6a') : '') + (isLegendary(j) ? line(esc(LEG.get(j.base)?.rule ?? '')) + line('只轉換範圍內已點亮的小型天賦（每顆節點最多被最近的一顆傳奇珠寶轉換）；轉換後仍套用上限；同種傳奇全盤限一顆', '#a99', 'font-size:11px;margin-top:4px')
         : (j.affixes ?? []).map((a) => line(esc(fmtVal(a.value, a.effectType)))).join('')) + line(this.picked === j.uid ? '已選取：點擊已點亮的珠寶孔鑲嵌' : '點擊選取後鑲嵌到珠寶孔', '#7fd8ff', 'margin-top:8px');
     }
