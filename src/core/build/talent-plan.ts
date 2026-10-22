@@ -1,7 +1,7 @@
-import { canAllocate, canRefund, isImplemented, unlockLevel, moveSpeedPct, cdrPct, damageReductionPct, type PlayerBonuses, type TalentMechanics, type Capped, type Alloc, type TalentData, type TalentNode, type TalentCtx } from './talents';
+import { canAllocate, canRefund, isImplemented, unlockLevel, moveSpeedPct, cdrPct, damageReductionPct, burnBonusPct, projSpeedPct, trailDmgPct, type PlayerBonuses, type TalentMechanics, type Capped, type Alloc, type TalentData, type TalentNode, type TalentCtx } from './talents';
 import LABELS from '../../data/build/talent-labels.json';
 
-type Lbl = { label: string; fmt: 'pct' | 'frac' | 'flat' | 'flag' | 'none' | 'tpl'; tpl?: string; cap?: string; stat?: 'moveSpeed' | 'cdr' | 'dr'; inv?: boolean; arrow?: boolean };
+type Lbl = { label: string; fmt: 'pct' | 'frac' | 'flat' | 'flag' | 'none' | 'tpl'; tpl?: string; cap?: string; stat?: 'moveSpeed' | 'cdr' | 'dr' | 'burn' | 'proj' | 'trail'; inv?: boolean; arrow?: boolean };
 const LBL = LABELS as unknown as Record<string, Lbl>;
 export type NodeKind = 'root' | 'small' | 'notable' | 'keystone';
 export const nodeKind = (n: TalentNode): NodeKind => (n.branch === 'core' ? 'root' : n.effectType === 'keystone' ? 'keystone' : n.id.endsWith('_mid') || n.id.includes('_n_') ? 'notable' : 'small');
@@ -41,8 +41,8 @@ export const TPL_EXTRA: Record<string, number> = {};
 /** Effective post-cap total for capped stats: '總計 +45% → 實際 +40%（已達上限 40%）'. '' when the effect type has no cap. */
 export function capLine(n: TalentNode, b: PlayerBonuses, m: TalentMechanics, hpFrac = 1): string {
   const effectType = n.effectType; const l = LBL[effectType]; if (!l?.stat) return '';
-  const c: Capped = l.stat === 'moveSpeed' ? moveSpeedPct(b, m, b.onDodgeSpeed?.pct ?? 0) : l.stat === 'cdr' ? cdrPct(b, m, typeof n.value === 'object' ? String(n.value.move) : undefined) : damageReductionPct(b, m, l.stat === 'dr' && effectType === 'lowHpDamageTakenPct' ? 0 : hpFrac);
-  const name = l.stat === 'moveSpeed' ? '移動速度' : l.stat === 'cdr' ? '冷卻縮減' : '減傷';
+  const c: Capped = l.stat === 'burn' ? burnBonusPct(b, m, true) : l.stat === 'proj' ? projSpeedPct(b, m) : l.stat === 'trail' ? trailDmgPct(b, m) : l.stat === 'moveSpeed' ? moveSpeedPct(b, m, b.onDodgeSpeed?.pct ?? 0) : l.stat === 'cdr' ? cdrPct(b, m, typeof n.value === 'object' ? String(n.value.move) : undefined) : damageReductionPct(b, m, l.stat === 'dr' && effectType === 'lowHpDamageTakenPct' ? 0 : hpFrac);
+  const name = l.stat === 'burn' ? '燃燒傷害（晴天）' : l.stat === 'proj' ? '投射物速度' : l.stat === 'trail' ? '火焰路徑傷害' : l.stat === 'moveSpeed' ? '移動速度' : l.stat === 'cdr' ? '冷卻縮減' : '減傷';
   const f = (x: number): string => `${x >= 0 ? '+' : ''}${Math.round(x * 10) / 10}%`;
   return c.capped ? `${name}總計 ${f(c.raw)} → 實際 ${f(c.value)}（已達上限 ${c.cap}%）` : `${name}總計 ${f(c.value)}（上限 ${c.cap}%）`;
 }

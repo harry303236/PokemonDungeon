@@ -3,7 +3,8 @@ import { warnOnce, type Modifier } from './pipeline';
 export interface TalentNode { id: string; name?: string; branch: string; tier: number; evoStage: number; effectType: string; value: number | string | Record<string, number | string>; maxRank: number; requires: string[]; requiresAny?: string[]; uiPlacement?: string; exclusiveGroup: string | null; drawback?: string; desc?: string }
 export interface TalentUi { drawPrereqLines?: boolean; keystonePinnedTop?: boolean; hideUnimplemented?: boolean; pointsMustEqualLevelMinus1?: boolean; utilityBranchLayout?: string }
 export interface TalentMechanics { comboResetSec: number; trailLifeSec: number; trailPerEnemyIcdSec: number;
-  cooldownReductionCapPct: number; moveSpeedCapPct: number; damageTakenReductionCapPct: number; onKillCdRefundMaxPerFrame: number; onKillCdRefundMaxSecPerSec: number }
+  cooldownReductionCapPct: number; moveSpeedCapPct: number; damageTakenReductionCapPct: number; onKillCdRefundMaxPerFrame: number; onKillCdRefundMaxSecPerSec: number;
+  burnDmgCapPct: number; projSpeedCapPct: number; trailDmgCapPct: number }
 export interface TalentMeta { ui?: TalentUi; mechanics?: TalentMechanics; pointsPerLevel: number; maxLevel: number; totalPoints: number; evoStageUnlock: Record<string, number>; socketsPerMoveByEvoStage: Record<string, number>; respec: { freeBeforeLevel: number; perNode: string; full: string }; branchCost?: Record<string, number> }
 export interface TalentData { meta: TalentMeta; nodes: TalentNode[] }
 export type Alloc = Record<string, number>;
@@ -126,10 +127,16 @@ export function talentBonuses(d: TalentData, a: Alloc): PlayerBonuses {
 }
 
 export const MECH_DEFAULTS: TalentMechanics = { comboResetSec: 2, trailLifeSec: 2, trailPerEnemyIcdSec: 0.5, cooldownReductionCapPct: 30, moveSpeedCapPct: 40, damageTakenReductionCapPct: 40,
-  onKillCdRefundMaxPerFrame: 1, onKillCdRefundMaxSecPerSec: 1.5 };
-export const mechanics = (d: TalentData): TalentMechanics => ({ ...MECH_DEFAULTS, ...(d.meta.mechanics ?? {}) });
+  onKillCdRefundMaxPerFrame: 1, onKillCdRefundMaxSecPerSec: 1.5, burnDmgCapPct: 200, projSpeedCapPct: 60, trailDmgCapPct: 150 };
+export const mechanics = (d: TalentData, ...more: (Partial<TalentMechanics> | undefined)[]): TalentMechanics => Object.assign({ ...MECH_DEFAULTS, ...(d.meta.mechanics ?? {}) }, ...more.map((m) => m ?? {}));
 
 // ---------- caps (applied AFTER all modifiers are summed; values from meta.mechanics) ----------
+/** Burn damage bonus %: generic burn + (sunny ? sun burn incl. 聚光鏡 ×2) summed, then capped (burnDmgCapPct). */
+export const burnBonusPct = (b: PlayerBonuses, m: TalentMechanics, sunny: boolean): Capped => capUp(b.burnDmgPct + (sunny ? b.sunBurnDmgPct : 0), m.burnDmgCapPct);
+/** Projectile speed % (incl. 順風羽), capped (projSpeedCapPct). */
+export const projSpeedPct = (b: PlayerBonuses, m: TalentMechanics): Capped => capUp(b.projSpeedPct, m.projSpeedCapPct);
+/** Fire-trail damage % (incl. 順風羽), capped (trailDmgCapPct). */
+export const trailDmgPct = (b: PlayerBonuses, m: TalentMechanics): Capped => capUp(b.trailDmgPct, m.trailDmgCapPct);
 export interface Capped { raw: number; value: number; capped: boolean; cap: number }
 const capUp = (raw: number, cap: number): Capped => ({ raw, value: Math.min(raw, cap), capped: raw > cap, cap });
 /** Move speed % (static talents + temporary buffs) -> capped. */

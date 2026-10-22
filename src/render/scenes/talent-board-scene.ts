@@ -1,11 +1,12 @@
 import Phaser from 'phaser';
 import { BOARD, type BoardNode } from '../../core/build/board';
 import ICONS from '../../data/build/talent-icons-v4.json';
+import { jewelArt, JEWEL_ART_KEYS } from '../views/talent-art';
 import type { TalentBoardController, NodeVisual } from '../views/talent-board-ui';
 
 const ART = 'assets/hud/talents/';
 const SIZE: Record<BoardNode['kind'], number> = { small: 46, notable: 64, keystone: 92, jewel: 60, start: 70 };
-const FRAME: Record<BoardNode['kind'], string> = { small: 'small', notable: 'notable', keystone: 'keystone', jewel: 'jewel-socket', start: 'notable' };
+const FRAME: Record<BoardNode['kind'], string> = { small: 'small', notable: 'notable', keystone: 'keystone', jewel: 'sock-empty', start: 'notable' };
 const REGION_LABEL: Record<string, { text: string; x: number; y: number }> = {
   sun: { text: '烈陽焚天', x: -620, y: -200 }, claw: { text: '龍爪狂襲', x: 0, y: -1000 }, wing: { text: '灼燒之翼', x: 640, y: -260 }, util: { text: '通用', x: 0, y: 420 },
 };
@@ -16,11 +17,14 @@ interface NodeObj { frame: Phaser.GameObjects.Image; icon?: Phaser.GameObjects.I
 /** v4 passive board: its own scene + camera (drag-pan, wheel zoom). DOM overlay (header, trunk, jewels, plan, tooltip) lives in TalentBoardController. */
 export class TalentBoardScene extends Phaser.Scene {
   private ctrl!: TalentBoardController; private objs = new Map<string, NodeObj>(); private edges!: Phaser.GameObjects.Graphics; private rings!: Phaser.GameObjects.Graphics;
-  private drag: { x: number; y: number; sx: number; sy: number; moved: boolean } | null = null; private t = 0;
+  private drag: { x: number; y: number; sx: number; sy: number; moved: boolean } | null = null; private t = 0; private labels: Phaser.GameObjects.Text[] = [];
   constructor() { super('talent-board'); }
   init(data: { ctrl: TalentBoardController }): void { this.ctrl = data.ctrl; }
   preload(): void {
-    for (const f of ['small', 'notable', 'keystone', 'jewel-socket']) if (!this.textures.exists(`tf-${f}`)) this.load.image(`tf-${f}`, `${ART}talent-frame-${f}.png`);
+    for (const f of ['small', 'notable', 'keystone']) if (!this.textures.exists(`tf-${f}`)) this.load.image(`tf-${f}`, `${ART}talent-frame-${f}.png`);
+    if (!this.textures.exists('tf-sock-empty')) this.load.image('tf-sock-empty', `${ART}jewels/jewel-socket-empty.png`);
+    if (!this.textures.exists('tf-sock-filled')) this.load.image('tf-sock-filled', `${ART}jewels/jewel-socket-filled.png`);
+    for (const k of JEWEL_ART_KEYS) if (!this.textures.exists(`jw-${k}`)) this.load.image(`jw-${k}`, `${ART}${jewelArt(k)}`);
     for (const n of BOARD.raw.nodes) { const p = (ICONS as Record<string, string | null>)[n.id]; if (p && !this.textures.exists(`ti-${n.id}`)) this.load.image(`ti-${n.id}`, ART + p); }
   }
   create(): void {
@@ -33,7 +37,7 @@ export class TalentBoardScene extends Phaser.Scene {
       const ns = BOARD.raw.nodes.filter((n) => n.region === k); const cx = ns.reduce((a, n) => a + n.pos.x, 0) / ns.length, cy = ns.reduce((a, n) => a + n.pos.y, 0) / ns.length;
       for (let i = 6; i > 0; i--) { glow.fillStyle(c, 0.035); glow.fillCircle(cx, cy, 90 * i); }
     }
-    for (const r of Object.values(REGION_LABEL)) this.add.text(r.x, r.y, r.text, { fontFamily: '"Noto Sans CJK TC", sans-serif', fontSize: '34px', color: '#ffc75a', stroke: '#2a1000', strokeThickness: 6 }).setOrigin(0.5).setAlpha(0.9).setDepth(-2);
+    for (const r of Object.values(REGION_LABEL)) this.labels.push(this.add.text(r.x, r.y, r.text, { fontFamily: '"Noto Sans CJK TC", sans-serif', fontSize: '34px', color: '#ffc75a', stroke: '#2a1000', strokeThickness: 6 }).setOrigin(0.5).setAlpha(0.95).setDepth(6));
     this.edges = this.add.graphics().setDepth(0); this.rings = this.add.graphics().setDepth(2);
     for (const n of BOARD.raw.nodes) {
       const s = SIZE[n.kind]; const o: NodeObj = { size: s, frame: this.add.image(n.pos.x, n.pos.y, `tf-${FRAME[n.kind]}`).setDisplaySize(s, s).setDepth(3) };
@@ -83,8 +87,14 @@ export class TalentBoardScene extends Phaser.Scene {
     for (const [id, o] of this.objs) this.styleNode(id, o, vis.get(id) ?? 'off');
     this.drawRings();
   }
-  private styleNode(_id: string, o: NodeObj, v: NodeVisual): void {
+  private styleNode(id: string, o: NodeObj, v: NodeVisual): void {
     const lit = v === 'on' || v === 'plan' || v === 'start';
+    if (BOARD.nodes.get(id)?.kind === 'jewel') {
+      const base = this.ctrl.socketBase(id); o.frame.setTexture(base ? 'tf-sock-filled' : 'tf-sock-empty').setDisplaySize(o.size, o.size);
+      if (base) { const is = o.size * 0.5; if (!o.icon) o.icon = this.add.image(BOARD.nodes.get(id)!.pos.x, BOARD.nodes.get(id)!.pos.y, `jw-${base}`).setDepth(4); o.icon.setTexture(`jw-${base}`).setDisplaySize(is, is * 144 / 128).setVisible(true);
+        o.icon.setAlpha(this.ctrl.socketLive(id) ? 1 : 0.4); } else o.icon?.setVisible(false);
+      o.frame.setTint(lit ? 0xffffff : v === 'avail' ? 0xb8b0a0 : 0x6a625a); return;
+    }
     o.frame.setTint(lit ? 0xffffff : v === 'avail' ? 0xb8b0a0 : 0x6a625a);
     if (o.fx) { o.fx.reset(); if (!lit) { o.fx.grayscale(1); o.fx.brightness(v === 'avail' ? 0.85 : 0.55, true); } }
     else o.icon?.setTint(lit ? 0xffffff : 0x666666);
@@ -109,5 +119,12 @@ export class TalentBoardScene extends Phaser.Scene {
   private dashedCircle(g: Phaser.GameObjects.Graphics, x: number, y: number, r: number, c: number, a: number): void {
     g.lineStyle(4, c, a); for (let i = 0; i < 16; i += 2) { g.beginPath(); g.arc(x, y, r, (i / 16) * Math.PI * 2, ((i + 1) / 16) * Math.PI * 2); g.strokePath(); }
   }
-  update(_t: number, dt: number): void { this.t += dt / 1000; this.drawRings(); }
+  update(_t: number, dt: number): void { this.t += dt / 1000; this.drawRings(); this.pinLabels(); }
+  /** Zone titles keep a constant on-screen size (≈26px) at every zoom, and are clamped inside the viewport edge so they stay visible. */
+  private pinLabels(): void {
+    const c = this.cameras.main; const k = 0.78 / c.zoom; const v = c.worldView; const m = 40 / c.zoom;
+    for (const [i, r] of Object.values(REGION_LABEL).entries()) { const t = this.labels[i]; if (!t) continue; t.setScale(k);
+      const hw = (t.width * k) / 2 + m * 0.3, hh = (t.height * k) / 2 + m * 0.3;
+      t.setPosition(Phaser.Math.Clamp(r.x, v.x + hw, v.right - hw), Phaser.Math.Clamp(r.y, v.y + hh + 40 / c.zoom, v.bottom - hh - 60 / c.zoom)); }
+  }
 }

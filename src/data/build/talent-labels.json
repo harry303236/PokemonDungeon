@@ -36,7 +36,9 @@
   },
   "burnDmgPct": {
     "label": "灼傷傷害",
-    "fmt": "pct"
+    "fmt": "pct",
+    "stat": "burn",
+    "cap": "burnDmgCapPct"
   },
   "burnConsumeMultPct": {
     "label": "引爆灼傷倍率",
@@ -82,7 +84,9 @@
   },
   "projSpeedPct": {
     "label": "彈道速度",
-    "fmt": "pct"
+    "fmt": "pct",
+    "stat": "proj",
+    "cap": "projSpeedCapPct"
   },
   "stunDurPct": {
     "label": "暈眩時間",
@@ -94,7 +98,9 @@
   },
   "trailDmgPct": {
     "label": "火痕傷害",
-    "fmt": "pct"
+    "fmt": "pct",
+    "stat": "trail",
+    "cap": "trailDmgCapPct"
   },
   "trailIgnite": {
     "label": "移動留下火痕",
@@ -190,7 +196,9 @@
   },
   "sunBurnDmgPct": {
     "label": "晴天時燃燒傷害",
-    "fmt": "pct"
+    "fmt": "pct",
+    "stat": "burn",
+    "cap": "burnDmgCapPct"
   },
   "attackSpeedPct": {
     "label": "攻擊速度（基本攻擊冷卻縮減）",

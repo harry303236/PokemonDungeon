@@ -5,7 +5,7 @@ import tagsJson from '../../data/build/move-tags.json';
 import reactionsJson from '../../data/build/reactions.json';
 import { opsModifier, warnOnce, compatible, STAGES, type Modifier, type Op, type OpsDef, type Stage, type StatusApply } from './pipeline';
 import { canAllocate, canRefund, pointsSpent, pointsTotal, talentBonuses, validateTalentData, type Alloc, type PlayerBonuses, type TalentData } from './talents';
-import { BOARD, emptyBoardState, migrateBuildSave, boardPointsSpent, boardBonuses, mergeBonuses, canAllocNode, canRefundNode, canRankMove, canUnrankMove, canAllocAsc, canRefundAsc, type BoardState, type BoardCtx } from './board';
+import { BOARD, emptyBoardState, migrateBuildSave, boardPointsSpent, boardBonuses, mergeBonuses, canAllocNode, canRefundNode, canRankMove, canUnrankMove, canAllocAsc, canRefundAsc, legendaryConflict, type BoardState, type BoardCtx } from './board';
 
 export const TALENTS = talentJson as unknown as TalentData;
 for (const e of validateTalentData(TALENTS)) console.warn(`[talents] ${e}`);
@@ -142,7 +142,8 @@ export class Build {
   socketJewel(sock: string, uid: string): { ok: boolean; reason?: string } {
     if (BOARD.nodes.get(sock)?.kind !== 'jewel') return { ok: false, reason: 'notSocket' };
     if (!this.s.board.nodes.includes(sock)) return { ok: false, reason: 'socketNotAllocated' };
-    if (!this.s.board.jewels.some((j) => j.uid === uid)) return { ok: false, reason: 'noJewel' };
+    const j = this.s.board.jewels.find((x) => x.uid === uid); if (!j) return { ok: false, reason: 'noJewel' };
+    if (legendaryConflict(this.s.board, sock, j)) return { ok: false, reason: 'dupLegendary' };
     for (const [k, v] of Object.entries(this.s.board.sockets)) if (v === uid) delete this.s.board.sockets[k];
     this.s.board.sockets[sock] = uid; return { ok: true };
   }
@@ -163,7 +164,7 @@ export class Build {
   }
   fullReset(): { ok: boolean; reason?: string } {
     const cost = fullResetCost(this.ctx().level); if (this.s.gold < cost) return { ok: false, reason: 'gold' };
-    this.s.gold -= cost; this.s.talents = {}; const keep = this.s.board; this.s.board = { ...emptyBoardState(), jewels: keep.jewels }; this.s.upgrades = {}; return { ok: true };
+    this.s.gold -= cost; this.s.talents = {}; const keep = this.s.board; this.s.board = { ...emptyBoardState(), jewels: keep.jewels, sockets: keep.sockets }; this.s.upgrades = {}; return { ok: true };
   }
   bonuses(): PlayerBonuses { return mergeBonuses(talentBonuses(TALENTS, this.s.talents), boardBonuses(BOARD, this.s.board, engineMoveId)); }
 

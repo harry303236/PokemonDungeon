@@ -8,6 +8,10 @@ T = os.path.join(ROOT, 'public/assets/hud/talents')
 V4 = json.load(open(os.path.join(ROOT, 'src/data/build/charmander-talents-v4.json')))
 V3 = json.load(open(os.path.join(ROOT, 'src/data/build/charmander-talents.json')))
 REG = os.path.join(T, 'PLACEHOLDERS.json')
+# placeholders the artist has replaced with real art (removed from the registry; files may be deleted or overwritten in place)
+REPLACED = {'ascendancy/asc-asc_flame_wing.png', 'ascendancy/asc-asc_dragon_blood.png', 'jewels/jewel-normal.png', 'jewels/jewel-jw_solar_lens.png', 'jewels/jewel-jw_dragon_heart.png',
+            'jewels/jewel-jw_tailwind.png', 'talent-frame-jewel-socket.png', 'talent-frame-ascendancy.png', 'ascendancy/asc-asc_fw_1.png', 'ascendancy/asc-asc_fw_2.png', 'ascendancy/asc-asc_fw_3.png',
+            'ascendancy/asc-asc_db_1.png', 'ascendancy/asc-asc_db_2.png', 'ascendancy/asc-asc_db_3.png'}
 placeholders = json.load(open(REG)) if os.path.exists(REG) else []
 FONT = next((f for f in ['/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc', '/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc', '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc'] if os.path.exists(f)), None)
 def font(sz): return ImageFont.truetype(FONT, sz) if FONT else ImageFont.load_default()
@@ -44,15 +48,14 @@ def ring_frame(rel, size, color, inner=0.62, gem=False):
 badge('icons/talent-sun_N3.png', '冕', (255, 190, 60), (120, 30, 0))
 badge('icons/talent-claw_N3.png', '逆', (220, 60, 40), (60, 0, 0))
 badge('icons/talent-wing_N3.png', '流', (255, 140, 60), (40, 20, 70))
-# ascendancy badges + frame
+# ascendancy sub-node badges + frame (artist art now delivered in place; only recreated if a file goes missing)
+REAL_ENTRY = {'asc_flame_wing', 'asc_dragon_blood'}  # entries use artist names ascendancy/<id>.png
 for a in V4['ascendancy']:
+    if a['id'] in REAL_ENTRY: continue
     fw = a['id'].startswith('asc_f'); badge(f"ascendancy/asc-{a['id']}.png", a['name'][0], (255, 150, 50) if fw else (120, 80, 220), (90, 20, 0) if fw else (20, 10, 60))
 ring_frame('talent-frame-ascendancy.png', 256, (230, 120, 255))
-# jewels + empty socket frame
-badge('jewels/jewel-normal.png', '珠', (120, 200, 255), (10, 30, 70))
-for j, col in [('jw_solar_lens', ((255, 220, 90), (130, 50, 0))), ('jw_dragon_heart', ((230, 70, 90), (60, 0, 20))), ('jw_tailwind', ((140, 255, 200), (0, 60, 50)))]:
-    name = next(x['name'] for x in V4['jewels']['legendary'] if x['id'] == j); badge(f'jewels/jewel-{j}.png', name[0], *col)
-ring_frame('talent-frame-jewel-socket.png', 256, (120, 190, 255), gem=True)
+# jewels + socket frames: artist art (jewels/jw_*.png, jewels/jewel-socket-{empty,filled}.png) -- no placeholders any more
+placeholders = [p for p in placeholders if os.path.exists(os.path.join(T, p)) and p not in REPLACED]
 json.dump(sorted(placeholders), open(REG, 'w'), ensure_ascii=False, indent=2)
 
 # icon manifest: talent-<v4id>.png > v3 icon with same name > v3 icon with same effectType > generic placeholder
@@ -64,6 +67,6 @@ for n in V4['nodes']:
     cands = [n['id'], v3_by_name.get(n['name']), v3_by_eff.get(n['effectType'])] if n['kind'] != 'start' else [n['id'], 'root']
     pick = next((c for c in cands if c and f'talent-{c}.png' in icons), None)
     man[n['id']] = f'icons/talent-{pick}.png' if pick else None
-for a in V4['ascendancy']: man[a['id']] = f"ascendancy/asc-{a['id']}.png"
+for a in V4['ascendancy']: man[a['id']] = f"ascendancy/{a['id']}.png" if a['id'] in REAL_ENTRY else f"ascendancy/asc-{a['id']}.png"
 json.dump(man, open(os.path.join(ROOT, 'src/data/build/talent-icons-v4.json'), 'w'), ensure_ascii=False, indent=1)
 print('placeholders:', len(placeholders), 'manifest:', sum(1 for v in man.values() if v), '/', len(man))

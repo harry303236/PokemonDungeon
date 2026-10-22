@@ -6,10 +6,10 @@ import { describe, it, expect } from 'vitest';
 import {
   BOARD, loadBoard, emptyBoardState, canAllocNode, canRefundNode, reachableFromStart, boardPointsSpent, boardPointsTotal,
   canRankMove, canUnrankMove, ascPointsTotal, canAllocAsc, canRefundAsc, conversionsFor, previewConversion, boardBonuses,
-  migrateBuildSave, shortestPath, JEWEL_RULES, type BoardState, type JewelItem,
+  migrateBuildSave, shortestPath, socketActive, legendaryConflict, JEWEL_RULES, type BoardState, type JewelItem,
 } from '../src/core/build/board';
 import { mechanics } from '../src/core/build/talents';
-import { moveSpeedPct } from '../src/core/build/talents';
+import { moveSpeedPct, burnBonusPct, projSpeedPct, trailDmgPct } from '../src/core/build/talents';
 import { Sim, newProgress } from '../src/core/sim';
 
 const B = BOARD; const START = B.startFor('charmander');
@@ -139,54 +139,105 @@ describe('ascendancy', () => {
 
 describe('jewels: conversion scope, caps, preview', () => {
   const lens: JewelItem = { uid: 'j1', base: 'jw_solar_lens' }; const heart: JewelItem = { uid: 'j2', base: 'jw_dragon_heart' }; const wind: JewelItem = { uid: 'j3', base: 'jw_tailwind' };
-  const inRadius = (sock: string, b = B) => b.socketRadius.get(sock)!;
-  // With the shipped radius (220) no spAtk small sits inside any socket (reported to design); widen sun_jewel to 400 for the lens tests.
-  const LB = loadBoard({ ...B.raw, nodes: B.raw.nodes.map((n) => (n.id === 'sun_jewel' ? { ...n, radius: 400 } : n)) });
-  it('legendary jewels convert only allocated SMALL nodes inside the radius', () => {
-    const sock = 'sun_jewel'; const path = [...new Set([...shortestPath(LB, START, sock)!.slice(1), 'sun_d1'])];
-    const s = st(path, { jewels: [lens], sockets: { [sock]: 'j1' } });
-    const conv = conversionsFor(LB, s);
-    for (const [id] of conv) { const n = LB.nodes.get(id)!; expect(n.kind).toBe('small'); expect(inRadius(sock, LB)).toContain(id); expect(s.nodes).toContain(id); }
-    // sun_d1 is spAtkPct, in radius and allocated -> converted to sunBurnDmgPct x2
-    expect(inRadius(sock, LB)).toContain('sun_d1'); expect(inRadius(sock, LB)).toContain('sun_N1'); expect(conv.get('sun_d1')?.after).toEqual([{ effectType: 'sunBurnDmgPct', value: 6 }]);
-    // notables/keystones in radius are never converted
-    expect(conv.has('sun_N3')).toBe(false); expect(conv.has('sun_N1')).toBe(false);
-    expect(boardBonuses(LB, s).spAtkPct).toBe(boardBonuses(LB, st(path)).spAtkPct - 3);
+  const M = mechanics({ meta: { mechanics: {} } } as never, B.meta.mechanics as never);
+  const pathTo = (...ids: string[]) => [...new Set(ids.flatMap((id) => shortestPath(B, START, id)!.slice(1)))];
+  it('socket radius is the data value (300) and in-radius lists come from affectsNodes only', () => {
+    for (const n of B.raw.nodes.filter((x) => x.kind === 'jewel')) { expect(n.radius).toBe(300); expect(B.socketRadius.get(n.id)).toEqual(n.affectsNodes); }
+    expect(M.burnDmgCapPct).toBe(200); expect(M.projSpeedCapPct).toBe(60); expect(M.trailDmgCapPct).toBe(150);
   });
-  it('unallocated in-radius nodes are not converted', () => {
-    const s = st(['sun_jewel'], { jewels: [lens], sockets: { sun_jewel: 'j1' } }); expect(conversionsFor(LB, s).size).toBe(0);
+  it('a minor node appears in at most one socket list (nearest socket wins in data)', () => {
+    const seen = new Map<string, string>();
+    for (const [sock, ids] of B.socketRadius) for (const id of ids) { expect(seen.has(id), id).toBe(false); seen.set(id, sock); expect(B.nodes.get(id)!.kind).toBe('small'); }
   });
-  it('a socketed jewel only works when the socket node itself is allocated', () => {
-    const path = shortestPath(B, START, 'util_jewel')!.slice(1, -1); const s = st(path, { jewels: [heart], sockets: { util_jewel: 'j2' } });
-    expect(conversionsFor(B, s).size).toBe(0);
+  type Row = { name: string; jewel: JewelItem; sock: string; nodes: string[]; before: string; after: (v: number) => { effectType: string; value: number }[] };
+  const ROWS: Row[] = [
+    { name: '聚光鏡', jewel: lens, sock: 'sun_jewel', nodes: ['sun_d1', 'sun_d2'], before: 'spAtkPct', after: (v) => [{ effectType: 'sunBurnDmgPct', value: 2 * v }] },
+    { name: '龍心', jewel: heart, sock: 'claw_jewel', nodes: ['claw_d1', 'claw_d2'], before: 'defensePct', after: (v) => [{ effectType: 'atkPct', value: Math.abs(v) }] },
+    { name: '順風羽', jewel: wind, sock: 'wing_jewel', nodes: ['wing_d1', 'wing_d2'], before: 'moveSpeedPct',
+      after: (v) => [{ effectType: 'moveSpeedPct', value: v }, { effectType: 'projSpeedPct', value: v }, { effectType: 'trailDmgPct', value: v }] },
+  ];
+  it.each(ROWS)('$name on the real board: converts exactly its in-range minor nodes, preview = live result', (r) => {
+    const preview = previewConversion(B, r.sock, r.jewel, st([]));
+    expect(preview.map((x) => x.id).sort()).toEqual([...r.nodes].sort());
+    for (const x of preview) { expect(x.before.effectType).toBe(r.before); expect(x.after).toEqual(r.after(x.before.value as number)); expect(x.active).toBe(false); }
+    const s = st(pathTo(r.sock, ...r.nodes), { jewels: [r.jewel], sockets: { [r.sock]: r.jewel.uid } });
+    const conv = conversionsFor(B, s); expect([...conv.keys()].sort()).toEqual([...r.nodes].sort());
+    for (const id of conv.keys()) expect(B.nodes.get(id)!.kind).toBe('small');
+    // notables / keystones never convert
+    for (const id of s.nodes) if (B.nodes.get(id)!.kind !== 'small') expect(conv.has(id)).toBe(false);
   });
-  it('龍心 turns defense-type smalls into attack of the same magnitude', () => {
-    const path = shortestPath(B, START, 'util_jewel')!.slice(1); const s = st(path, { jewels: [heart], sockets: { util_jewel: 'j2' } });
-    const conv = conversionsFor(B, s); expect(conv.get('util_bot_4')?.after).toEqual([{ effectType: 'atkPct', value: 2 }]);
-    const b = boardBonuses(B, s); expect(b.damageTakenPct).toBe(0); expect(b.atkPct).toBeGreaterThanOrEqual(2);
+  it('聚光鏡: ×2 first, then the burn cap (burnDmgCapPct)', () => {
+    const s = st(pathTo('sun_jewel', 'sun_d1', 'sun_d2'), { jewels: [lens], sockets: { sun_jewel: 'j1' } });
+    const b = boardBonuses(B, s); const plain = boardBonuses(B, st(s.nodes));
+    expect(b.sunBurnDmgPct - plain.sunBurnDmgPct).toBe(2 * 3 + 2 * 3);
+    expect(burnBonusPct(b, M, true).value).toBe(b.burnDmgPct + b.sunBurnDmgPct);
+    expect(burnBonusPct(b, M, false).value).toBe(b.burnDmgPct);
+    b.sunBurnDmgPct += 500; const c = burnBonusPct(b, M, true); expect(c.capped).toBe(true); expect(c.value).toBe(M.burnDmgCapPct);
   });
-  it('順風羽 keeps speed and adds projectile speed + trail damage, still capped by meta.mechanics', () => {
-    const path = shortestPath(B, START, 'util_jewel')!.slice(1); const s = st(path, { jewels: [wind], sockets: { util_jewel: 'j3' } });
-    const conv = conversionsFor(B, s); const speedNodes = [...conv.keys()]; expect(speedNodes).toEqual(['util_bot_5']);
-    expect(conv.get('util_bot_5')!.after).toEqual([{ effectType: 'moveSpeedPct', value: 3 }, { effectType: 'projSpeedPct', value: 3 }, { effectType: 'trailDmgPct', value: 3 }]);
-    for (const id of speedNodes) expect(['speedPct', 'moveSpeedPct']).toContain(B.nodes.get(id)!.effectType);
-    const b = boardBonuses(B, s); b.speedPct += 500; // push far over the cap
-    const M = mechanics({ meta: B.meta } as never); expect(moveSpeedPct(b, M).value).toBe(M.moveSpeedCapPct);
+  it('順風羽: projectile speed and trail damage are capped by meta.mechanics', () => {
+    const s = st(pathTo('wing_jewel', 'wing_d1', 'wing_d2'), { jewels: [wind], sockets: { wing_jewel: 'j3' } });
+    const b = boardBonuses(B, s); expect(b.projSpeedPct).toBeGreaterThanOrEqual(4); expect(b.trailDmgPct).toBeGreaterThanOrEqual(4);
+    expect(projSpeedPct(b, M).capped).toBe(false);
+    b.projSpeedPct += 999; b.trailDmgPct += 999;
+    expect(projSpeedPct(b, M).value).toBe(60); expect(trailDmgPct(b, M).value).toBe(150);
+  });
+  it('龍心: damage-taken minors become attack too (util socket)', () => {
+    const s = st(pathTo('util_jewel', 'util_bot_4'), { jewels: [heart], sockets: { util_jewel: 'j2' } });
+    expect(conversionsFor(B, s).get('util_bot_4')?.after).toEqual([{ effectType: 'atkPct', value: 2 }]);
+  });
+  it('two-socket overlap: a minor node is converted by at most one legendary — the NEAREST socket', () => {
+    // test board: a second socket right next to sun_d1 that also lists sun_d1/sun_d2
+    const d1 = B.nodes.get('sun_d1')!.pos;
+    const TB = loadBoard({ ...B.raw, nodes: [...B.raw.nodes, { id: 'x_jewel', kind: 'jewel', name: '珠寶孔', effectType: 'jewelSocket', value: 0, pos: { x: d1.x + 10, y: d1.y }, radius: 300, affectsNodes: ['sun_d1', 'sun_d2'] } as never],
+      edges: [...B.raw.edges, ['sun_d1', 'x_jewel']] });
+    expect(TB.owner.get('sun_d1')).toBe('x_jewel');
+    const nearer = TB.sockDist('x_jewel', 'sun_d2') < TB.sockDist('sun_jewel', 'sun_d2') ? 'x_jewel' : 'sun_jewel'; expect(TB.owner.get('sun_d2')).toBe(nearer);
+    const lens2: JewelItem = { uid: 'j9', base: 'jw_solar_lens' };
+    const nodes = [...new Set([...shortestPath(TB, START, 'sun_jewel')!.slice(1), 'sun_d1', 'sun_d2', 'x_jewel'])];
+    // lens in the near socket converts sun_d1; heart in the far socket cannot also touch it
+    const s = st(nodes, { jewels: [lens, heart], sockets: { x_jewel: 'j1', sun_jewel: 'j2' } });
+    const conv = conversionsFor(TB, s); expect(conv.get('sun_d1')?.jewel).toBe('j1');
+    for (const c of conv.values()) expect(TB.owner.get(c.id)).toBe(Object.entries(s.sockets).find(([, u]) => u === c.jewel)![0]);
+    // even two lenses (forced past the API) never double-convert a node
+    const s2 = st(nodes, { jewels: [lens, lens2], sockets: { x_jewel: 'j1', sun_jewel: 'j9' } });
+    const b2 = boardBonuses(TB, s2); const once = boardBonuses(TB, st(nodes, { jewels: [lens], sockets: { x_jewel: 'j1' } }));
+    expect(b2.sunBurnDmgPct).toBe(nearer === 'x_jewel' ? once.sunBurnDmgPct : b2.sunBurnDmgPct);
+    expect(conversionsFor(TB, s2).size).toBe(2);
+  });
+  it('only one of each legendary type may be socketed on the whole board', () => {
+    const b = new Build(newBuildSave(), () => ({ level: 10, evoStage1: 2 })); b.s.bonusPoints = 99; b.debug = true;
+    for (const id of pathTo('sun_jewel', 'claw_jewel')) b.s.board.nodes.push(id);
+    const l2: JewelItem = { uid: 'j9', base: 'jw_solar_lens' }; b.s.board.jewels.push(lens, l2, heart);
+    expect(b.socketJewel('sun_jewel', 'j1').ok).toBe(true);
+    expect(b.socketJewel('claw_jewel', 'j9')).toEqual({ ok: false, reason: 'dupLegendary' });
+    expect(b.socketJewel('claw_jewel', 'j2').ok).toBe(true); // different type is fine
+    expect(b.socketJewel('sun_jewel', 'j9').ok).toBe(true); // replacing the same socket is fine
+    expect(legendaryConflict(b.s.board, 'claw_jewel', lens)).toBe('sun_jewel');
+  });
+  it('inactive socket: disconnected socket keeps its jewel but all its effects turn off', () => {
+    const nodes = pathTo('sun_jewel', 'sun_d1', 'sun_d2');
+    const on = st(nodes, { jewels: [lens, { uid: 'n1', base: 'normal', affixes: [{ effectType: 'critPct', value: 3 }] }], sockets: { sun_jewel: 'j1' } });
+    expect(socketActive(B, on, 'sun_jewel')).toBe(true); expect(conversionsFor(B, on).size).toBe(2);
+    // a respec cuts the path (sun_N3 gone): socket still allocated in the save but no longer connected
+    const off = { ...on, nodes: nodes.filter((x) => x !== 'sun_N3') };
+    expect(socketActive(B, off, 'sun_jewel')).toBe(false); expect(conversionsFor(B, off).size).toBe(0); expect(off.sockets.sun_jewel).toBe('j1');
+    const nb = st(nodes, { ...on, sockets: { sun_jewel: 'n1' } }); const nbOff = { ...nb, nodes: nodes.filter((x) => x !== 'sun_N3') };
+    expect(boardBonuses(B, nb).critPct - boardBonuses(B, st(nodes)).critPct).toBe(3);
+    expect(boardBonuses(B, nbOff).critPct).toBe(boardBonuses(B, st(nbOff.nodes)).critPct);
+    // full reset keeps the jewel in its socket, inactive
+    const bd = new Build(newBuildSave(), () => ({ level: 10, evoStage1: 2 })); bd.s.board = { ...on, nodes: [...nodes] }; expect(bd.fullReset().ok).toBe(true);
+    expect(bd.s.board.sockets.sun_jewel).toBe('j1'); expect(socketActive(B, bd.s.board, 'sun_jewel')).toBe(false);
+  });
+  it('unallocated in-range nodes are not converted', () => {
+    const nodes = pathTo('util_jewel'); expect(nodes).not.toContain('util_bot_2');
+    const pv = Object.fromEntries(previewConversion(B, 'util_jewel', heart, st(nodes)).map((r) => [r.id, r.active]));
+    expect(pv.util_bot_2).toBe(false);
+    const conv = conversionsFor(B, st(nodes, { jewels: [heart], sockets: { util_jewel: 'j2' } })); expect(conv.has('util_bot_2')).toBe(false);
+    for (const id of conv.keys()) expect(nodes).toContain(id);
   });
   it('normal jewel affixes go through the same stat handlers and caps', () => {
-    const path = shortestPath(B, START, 'util_jewel')!.slice(1);
-    const s = st(path, { jewels: [{ uid: 'n1', base: 'normal', affixes: [{ effectType: 'moveSpeedPct', value: 999 }, { effectType: 'cooldownReductionPct', value: 999 }] }], sockets: { util_jewel: 'n1' } });
-    const b = boardBonuses(B, s); const M = mechanics({ meta: B.meta } as never);
-    expect(moveSpeedPct(b, M).value).toBe(M.moveSpeedCapPct);
-  });
-  it('preview lists every in-radius small node that would convert, with before/after, allocated or not', () => {
-    const rows = previewConversion(LB, 'sun_jewel', lens, st([]));
-    expect(rows.map((r) => r.id)).toEqual(['sun_d1']);
-    for (const r of rows) { const n = LB.nodes.get(r.id)!; expect(n.kind).toBe('small'); expect(inRadius('sun_jewel', LB)).toContain(r.id); expect(r.before.effectType).toBe('spAtkPct'); expect(r.after[0]!.effectType).toBe('sunBurnDmgPct'); expect(r.after[0]!.value).toBe(2 * (n.value as number)); expect(r.active).toBe(false); }
-    const rows2 = previewConversion(LB, 'sun_jewel', lens, st([...shortestPath(LB, START, 'sun_jewel')!.slice(1), 'sun_d1']));
-    expect(rows2.every((r) => r.active)).toBe(true);
-    const hp = previewConversion(B, 'util_jewel', heart, st([])); expect(hp.map((r) => r.id).sort()).toEqual(['util_bot_2', 'util_bot_4']);
-    expect(previewConversion(B, 'sun_jewel', lens, st([]))).toEqual([]); // shipped radius: nothing to convert
+    const s = st(pathTo('util_jewel'), { jewels: [{ uid: 'n1', base: 'normal', affixes: [{ effectType: 'moveSpeedPct', value: 999 }] }], sockets: { util_jewel: 'n1' } });
+    expect(moveSpeedPct(boardBonuses(B, s), M).value).toBe(M.moveSpeedCapPct);
     expect(previewConversion(B, 'sun_jewel', { uid: 'n', base: 'normal', affixes: [] }, st([]))).toEqual([]);
   });
   it('jewel rules are data (src/data/build/jewel-rules.json)', () => { expect(Object.keys(JEWEL_RULES.legendary).sort()).toEqual(['jw_dragon_heart', 'jw_solar_lens', 'jw_tailwind']); });

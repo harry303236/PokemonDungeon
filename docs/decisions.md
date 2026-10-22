@@ -87,3 +87,10 @@
 - 存檔只存節點 id；非 v4 存檔遷移時全數退點（talents/upgrades 清空，`migratedFromV3`）。
 - UI：獨立 Phaser 場景 `talent-board`（拖曳平移、滾輪以游標為中心縮放 0.35–1.6）＋ DOM 覆蓋層（規劃/確認、主幹、珠寶列、昇華視窗、小地圖、提示框）。昇華點擊即生效（不走規劃）。
 - 招式鎖定只在槽位/自動施放把關；`Sim.tryCast` API 本身不檢查。
+
+## 2026-10-22 · v4 珠寶規則（CTO 五條）＋ 美術替換
+- 半徑固定 300、各孔 `affectsNodes` 由 gen_v4.py 預先算好（最近孔優先，同距離取 id 序）；遊戲只讀這份清單（`Board.socketRadius` / `Board.owner`），不在執行時重算。
+- 一顆小節點最多被一顆傳奇轉換（owner 孔）；同種傳奇全盤限一顆（`legendaryConflict`，`socketJewel` 回 `dupLegendary`）。
+- 上限（meta.mechanics，後加總）：`burnDmgCapPct` 200（燃燒 + 晴天燃燒，聚光鏡先 ×2 再套）、`projSpeedCapPct` 60、`trailDmgCapPct` 150（順風羽）。
+- 孔需已點且與起點連通才生效（`socketActive`）；斷開時珠寶留在孔內但不生效，提示框標示「未生效」。全部重置也保留鑲嵌（未生效）。
+- UI：招式主幹改成可收合分頁；規劃中節點顯示「規劃後 +X%」；區域標題固定螢幕大小並夾在視窗內。

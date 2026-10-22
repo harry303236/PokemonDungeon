@@ -9,9 +9,9 @@ import { moveCooldown, energyCost } from './moves/cooldown';
 import { BASIC_MOVE, DEFAULT_SLOTS, assignSlot, validateSlots, type Slots } from './moves/loadout';
 import { TALENTS, engineMoveId, Build, ensureBuild, moveTags, MOVE_TAGS, STATUSES, GEMS, reactionsFor, triggerMatches, REACTION_RULES, type BuildSave, type ReactionRule } from './build/build';
 import { baseSpec, buildMoveSpec, dmgFactor, areaFactor, type Modifier, type MoveSpec } from './build/pipeline';
-import { JEWEL_RULES, type JewelItem } from './build/board';
+import { BOARD, JEWEL_RULES, type JewelItem } from './build/board';
 import { typeMult } from './combat/type-chart';
-import { emptyBonuses, mechanics, moveSpeedPct, cdrPct, damageReductionPct, type PlayerBonuses } from './build/talents';
+import { emptyBonuses, mechanics, moveSpeedPct, cdrPct, damageReductionPct, burnBonusPct, projSpeedPct, trailDmgPct, type PlayerBonuses } from './build/talents';
 import { findPath, clampToFloor, hasLineOfSight, type Pt } from './dungeon/pathfind';
 import { rollItem, canEquip, type Item, type ItemSlot } from './loot/loot-roller';
 import { monster as monsterData, move as moveData, species as speciesData, MONSTERS } from '../data/registry';
@@ -78,7 +78,7 @@ export class Sim {
   /** fire trail: same enemy takes trail damage at most once per trailPerEnemyIcdSec across ALL patches */
   private trailHitT = new Map<number, number>();
   trailCanHit(id: number): boolean { const t = this.trailHitT.get(id); if (t !== undefined && this.time - t < this.mech.trailPerEnemyIcdSec) return false; this.trailHitT.set(id, this.time); return true; }
-  readonly mech = mechanics(TALENTS);
+  readonly mech = mechanics(TALENTS, BOARD.meta.mechanics as never);
   private combo = 0; private comboT = -9;
   /** reaction once-per-object-per-frame guard (cleared every step) */
   private reactedThisFrame = new Set<string>();
@@ -306,7 +306,7 @@ export class Sim {
   /** trailIgnite: walking leaves short-lived fire (direct dmg scaled by trailDmgPct). */
   private walkTrail(dist: number): void {
     if (this.bon.trailIgnite <= 0) return; this.moveTrail += dist; if (this.moveTrail < 40) return; this.moveTrail = 0;
-    this.spawnGround('fire', this.player.x, this.player.y, this.mech.trailLifeSec, this.player.id, 0.08 * (1 + this.bon.trailDmgPct / 100));
+    this.spawnGround('fire', this.player.x, this.player.y, this.mech.trailLifeSec, this.player.id, 0.08 * (1 + trailDmgPct(this.bon, this.mech).value / 100));
   }
   private stepAlong(path: Pt[], dt: number): void {
     const p = this.player; let budget = this.moveSpeed() * dt;
@@ -428,7 +428,7 @@ export class Sim {
     return buildMoveSpec(base, this.build.modifiersFor(id, this.equipModifiers(eq), this.bon)).spec;
   }
   private spawnProjectile(id: string, x: number, y: number, a: number, mods: MoveMods, hitSet: Set<number>, pierce: number, chain: number, fork: number, dmgMult = 1, chainJumps = 0): void {
-    const pr = mods.spec?.params ?? moveData(id).params; const spd = (pr.speed ?? 500) * (1 + this.bon.projSpeedPct / 100);
+    const pr = mods.spec?.params ?? moveData(id).params; const spd = (pr.speed ?? 500) * (1 + projSpeedPct(this.bon, this.mech).value / 100);
     this.world.spawn({ kind: 'projectile', x, y, vx: Math.cos(a) * spd, vy: Math.sin(a) * spd, rot: a, r: pr.radius ?? 8, team: 'player', owner: this.player.id,
       moveId: id, life: (pr.range ?? 400) / spd, hitSet, pierce, chain, fork, mods, dmgMult, chainJumps });
   }
@@ -556,7 +556,7 @@ export class Sim {
         this.detonateSeeds(seed, src, spec, mods, rule, chain);
       } else if (req === 'status:burn') {
         const b = target.burn; if (!b || !pre.burn || target.hp === undefined || !target.maxHp) continue; this.reactedThisFrame.add(once);
-        const left = target.maxHp * (target.isBoss ? BALANCE.burnPctBoss : BALANCE.burnPctPerSec) * b.stacks * b.t * (1 + this.bon.burnDmgPct / 100) * this.num(rule, 'mult', 1.5) * (1 + this.bon.burnConsumeMultPct / 100);
+        const left = target.maxHp * (target.isBoss ? BALANCE.burnPctBoss : BALANCE.burnPctPerSec) * b.stacks * b.t * (1 + burnBonusPct(this.bon, this.mech, this.sunT > 0).value / 100) * this.num(rule, 'mult', 1.5) * (1 + this.bon.burnConsumeMultPct / 100);
         target.burn = undefined; target.hp -= left;
         this.bus.emit('damage:dealt', { target: target.id, amount: Math.round(left), isCrit: true, typeEff: 1, x: target.x, y: target.y - target.r });
         this.bus.emit('reaction', { id: rule.id, x: target.x, y: target.y, r: 50, vfx: rule.vfx });
@@ -752,7 +752,7 @@ export class Sim {
     for (const e of [...this.world.query('monster'), this.player]) {
       if (e.dead || e.hp === undefined || !e.maxHp) continue;
       if (e.burn) {
-        const bmul = e.kind === 'monster' ? (1 + this.bon.burnDmgPct / 100) * (this.sunT > 0 ? 1 + this.bon.sunBurnDmgPct / 100 : 1) : 1;
+        const bmul = e.kind === 'monster' ? (1 + burnBonusPct(this.bon, this.mech, this.sunT > 0).value / 100) : 1;
         e.hp -= e.maxHp * (e.isBoss ? BALANCE.burnPctBoss : BALANCE.burnPctPerSec) * e.burn.stacks * dt * bmul; if (e.kind === 'player' || e.burn.src === this.player.id) this.lastCombatT = this.time;
         e.burn.t -= dt;
         const src = e.burn.src;

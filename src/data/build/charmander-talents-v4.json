@@ -27,9 +27,14 @@
       "moveSpeedCapPct": 50,
       "damageTakenReductionCapPct": 40,
       "onKillCdRefundMaxPerFrame": 1,
-      "onKillCdRefundMaxSecPerSec": 1.5
+      "onKillCdRefundMaxSecPerSec": 1.5,
+      "burnDmgCapPct": 200,
+      "projSpeedCapPct": 60,
+      "trailDmgCapPct": 150
     },
-    "moveUnlockNote": "招式解鎖順序參考 PokéAPI，等級壓縮成遊戲節奏（原作噴射火焰 Lv24、火焰旋渦 Lv32、閃焰衝鋒/大字爆炎為招式學習器）"
+    "moveUnlockNote": "招式解鎖順序參考 PokéAPI，等級壓縮成遊戲節奏（原作噴射火焰 Lv24、火焰旋渦 Lv32、閃焰衝鋒/大字爆炎為招式學習器）",
+    "firstRankFree": "火花第 1 級免費（Lv1 時沒有點數）",
+    "idsFrozen": "v4 起節點 id 固定，改效果不改 id；新增節點用新 id"
   },
   "moveTrunk": [
     {
@@ -272,8 +277,8 @@
     {
       "id": "sun_d2",
       "kind": "small",
-      "name": "炎流",
-      "effectType": "fireDmgPct",
+      "name": "灼光",
+      "effectType": "spAtkPct",
       "value": 3,
       "pos": {
         "x": -441,
@@ -305,9 +310,13 @@
         "x": -531,
         "y": -470
       },
-      "radius": 220,
+      "radius": 300,
       "branch": "烈陽焚天",
-      "region": "sun"
+      "region": "sun",
+      "affectsNodes": [
+        "sun_d1",
+        "sun_d2"
+      ]
     },
     {
       "id": "claw_a1",
@@ -486,9 +495,9 @@
     {
       "id": "claw_d1",
       "kind": "small",
-      "name": "硬爪",
-      "effectType": "atkPct",
-      "value": 3,
+      "name": "硬鱗",
+      "effectType": "defensePct",
+      "value": 4,
       "pos": {
         "x": 70,
         "y": -440
@@ -499,9 +508,9 @@
     {
       "id": "claw_d2",
       "kind": "small",
-      "name": "龍息",
-      "effectType": "fireDmgPct",
-      "value": 3,
+      "name": "厚皮",
+      "effectType": "defensePct",
+      "value": 4,
       "pos": {
         "x": 140,
         "y": -520
@@ -535,9 +544,13 @@
         "x": 260,
         "y": -660
       },
-      "radius": 220,
+      "radius": 300,
       "branch": "龍爪狂襲",
-      "region": "claw"
+      "region": "claw",
+      "affectsNodes": [
+        "claw_d1",
+        "claw_d2"
+      ]
     },
     {
       "id": "wing_a1",
@@ -715,9 +728,9 @@
     {
       "id": "wing_d1",
       "kind": "small",
-      "name": "餘溫",
-      "effectType": "trailDmgPct",
-      "value": 5,
+      "name": "風行",
+      "effectType": "moveSpeedPct",
+      "value": 2,
       "pos": {
         "x": 437,
         "y": -85
@@ -729,7 +742,7 @@
       "id": "wing_d2",
       "kind": "small",
       "name": "羽翼",
-      "effectType": "evasionPct",
+      "effectType": "moveSpeedPct",
       "value": 2,
       "pos": {
         "x": 537,
@@ -761,9 +774,13 @@
         "x": 709,
         "y": 19
       },
-      "radius": 220,
+      "radius": 300,
       "branch": "灼燒之翼",
-      "region": "wing"
+      "region": "wing",
+      "affectsNodes": [
+        "wing_d1",
+        "wing_d2"
+      ]
     },
     {
       "id": "util_sc_1",
@@ -956,9 +973,15 @@
         "x": 90,
         "y": 320
       },
-      "radius": 220,
+      "radius": 300,
       "branch": "通用",
-      "region": "util"
+      "region": "util",
+      "affectsNodes": [
+        "util_bot_2",
+        "util_bot_4",
+        "util_bot_5",
+        "util_bot_potion"
+      ]
     }
   ],
   "edges": [
@@ -1345,6 +1368,11 @@
       }
     ],
     "rules": [
+      "半徑固定 300（盤面座標單位），範圍內節點由產生腳本預先算好寫在 affectsNodes，遊戲只讀這份清單，不在執行時重算",
+      "同一顆小節點最多被一顆傳奇珠寶轉換，落在多個孔範圍時以距離最近的孔為準（同距離取 id 字母序較前者）",
+      "同一種傳奇珠寶全盤只能插一顆",
+      "聚光鏡：先把數值 ×2 再套 burnDmgCapPct 上限",
+      "珠寶孔本身必須已點亮（與已點節點相連）才生效；洗點使孔斷開時，珠寶效果一併關閉，珠寶留在孔內",
       "只轉換範圍內 kind=small 的節點，不影響 notable/keystone",
       "轉換後照樣套 meta.mechanics 上限",
       "效果需已點亮才生效",

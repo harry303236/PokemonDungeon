@@ -2,7 +2,7 @@ import type Phaser from 'phaser';
 import type { Sim } from '../../core/sim';
 import { fullResetCost, RESPEC_FREE_BEFORE, engineMoveId } from '../../core/build/build';
 import {
-  BOARD, ascPointsTotal, boardPointsSpent, canAllocNode, canRefundNode, canAllocAsc, conversionsFor, previewConversion, isLegendary,
+  BOARD, ascPointsTotal, boardPointsSpent, canAllocNode, canRefundNode, canAllocAsc, conversionsFor, socketActive, previewConversion, isLegendary,
   type BoardNode, type Effect, type JewelItem, type Conversion,
 } from '../../core/build/board';
 import { emptyPlan, mergedState, planEmpty, planCost, planRefunds, stageAddNode, stageRemoveNode, stageMove, applyPlan, type BoardPlan } from '../../core/build/board-plan';
@@ -11,6 +11,7 @@ import { fmtVal } from './talent-panel-view';
 import type { TalentNode } from '../../core/build/talents';
 import DIRECTOR from '../../data/build/charmander-moves-gems.json';
 import type { TalentBoardScene } from '../scenes/talent-board-scene';
+import { jewelArt, ascArt } from './talent-art';
 
 export type NodeVisual = 'start' | 'on' | 'plan' | 'remove' | 'avail' | 'off';
 const ART = 'assets/hud/talents/';
@@ -28,7 +29,7 @@ const PANEL = 'background:rgba(14,9,6,.92);border:1px solid #5a4228;border-radiu
 /** Talent system v4 UI controller: launches the board scene and owns the DOM overlay (plan/confirm, trunk, jewels, ascendancy, tooltip, minimap). */
 export class TalentBoardController {
   open = false; private scene?: TalentBoardScene; private root: HTMLDivElement; private plan: BoardPlan = emptyPlan();
-  private hoverId: string | null = null; private hoverJewel: string | null = null; private mx = 0; private my = 0; private picked: string | null = null; private ascOpen = false; private msg = '';
+  private hoverId: string | null = null; private hoverJewel: string | null = null; private mx = 0; private my = 0; private picked: string | null = null; private ascOpen = false; private msg = ''; private trunkOpen = false;
   constructor(private host: Phaser.Scene, private sim: () => Sim, private onChange: () => void) {
     this.root = document.createElement('div'); this.root.id = 'talent-board-ui';
     Object.assign(this.root.style, { position: 'fixed', inset: '0', pointerEvents: 'none', zIndex: '12', display: 'none', color: '#ddd', fontSize: '13px', userSelect: 'none', fontFamily: '"Noto Sans CJK TC", sans-serif' });
@@ -64,6 +65,9 @@ export class TalentBoardController {
     const j = this.pickedJewel() ?? this.socketed(n.id); if (!j) return { socket: n.id, nodes: [] };
     return { socket: n.id, nodes: previewConversion(BOARD, n.id, j, this.merged()).map((r) => r.id) };
   }
+  socketBase(sock: string): string | null { return this.socketed(sock)?.base ?? null; }
+  socketLive(sock: string): boolean { return socketActive(BOARD, this.b.s.board, sock); }
+  private jewelLive(uid: string): boolean { const k = Object.entries(this.b.s.board.sockets).find(([, u]) => u === uid)?.[0]; return !!k && this.socketLive(k); }
   private pickedJewel(): JewelItem | undefined { return this.b.s.board.jewels.find((j) => j.uid === this.picked); }
   private socketed(sock: string): JewelItem | undefined { const uid = this.b.s.board.sockets[sock]; return this.b.s.board.jewels.find((j) => j.uid === uid); }
 
@@ -97,10 +101,10 @@ export class TalentBoardController {
         <div style="display:flex;align-items:center;gap:4px;margin:2px 0">${pips}<button data-mv="${t.move}|-1" style="${BTN};padding:0 6px">−</button><button data-mv="${t.move}|1" style="${BTN};padding:0 6px">＋</button></div>
         <div style="font-size:11px;color:${r >= 2 ? '#f2e2c0' : '#776'}">第 2 級：${esc(t.enhance)}</div>${variant}</div>`;
     }).join('');
-    const socketedUids = b.socketedUids();
+    const socketedUids = b.socketedUids(); const trunkSpent = `${Object.values(m.moves).reduce((a, r) => a + r, 0)}/${BOARD.trunk.size * 3}`;
     const jewels = b.s.board.jewels.map((j) => `<div data-jw="${j.uid}" style="${PANEL};cursor:pointer;display:flex;gap:6px;align-items:center;padding:4px 8px;min-width:120px;${this.picked === j.uid ? 'border-color:#ffe066;box-shadow:0 0 10px #ffe066' : ''}">
-        <img src="${ART}jewels/jewel-${isLegendary(j) ? j.base : 'normal'}.png" style="width:30px;height:30px" draggable="false">
-        <div style="font-size:12px;line-height:1.3"><b style="color:${isLegendary(j) ? '#ff9a3a' : '#9fd0ff'}">${esc(jewelName(j))}</b>${socketedUids.has(j.uid) ? ' <span style="color:#8c8;font-size:11px">已鑲嵌</span>' : ''}<br>
+        <img src="${ART}${jewelArt(j.base)}" style="width:30px;height:34px;object-fit:contain" draggable="false">
+        <div style="font-size:12px;line-height:1.3"><b style="color:${isLegendary(j) ? '#ff9a3a' : '#9fd0ff'}">${esc(jewelName(j))}</b>${socketedUids.has(j.uid) ? (this.jewelLive(j.uid) ? ' <span style="color:#8c8;font-size:11px">已鑲嵌</span>' : ' <span style="color:#d88;font-size:11px">已鑲嵌（未生效）</span>') : ''}<br>
         <span style="color:#aaa">${isLegendary(j) ? '傳奇 · 轉換' : (j.affixes ?? []).map((a) => esc(fmtVal(a.value, a.effectType))).join('、')}</span></div></div>`).join('') || '<span style="color:#776;pointer-events:auto">尚無珠寶（地城掉落）</span>';
     const sum = [...this.plan.add.map((id) => `<span style="color:#9fe0ff">+${esc(split(BOARD.nodes.get(id)!.name).title)}</span>`), ...this.plan.remove.map((id) => `<span style="color:#ff9a8a">−${esc(split(BOARD.nodes.get(id)!.name).title)}</span>`),
       ...Object.entries(this.plan.moves).map(([mv, d]) => `<span style="color:${d > 0 ? '#9fe0ff' : '#ff9a8a'}">${d > 0 ? '+' : '−'}${esc(DMOVES.find((x) => x.id === mv)?.name ?? mv)}×${Math.abs(d)}</span>`)].join('、');
@@ -111,7 +115,10 @@ export class TalentBoardController {
           <span id="tb-zoom" style="color:#9cf;min-width:72px">縮放 —</span>
           <button id="tb-fit" style="${BTN}">重置視角</button><button id="tb-asc" style="${BTN};${evo >= 3 ? 'border-color:#c9f;color:#e6c8ff' : 'opacity:.6'}">昇華 ${b.s.board.asc.length}/${ascPointsTotal(BOARD, lvl, evo)}</button>
           <button id="tb-reset" style="${BTN}">全部重置（${fullResetCost(lvl) || '免費'}${fullResetCost(lvl) ? ' 金' : ''}）</button></span></div>
-      <div style="position:absolute;left:12px;top:46px;width:214px;${PANEL}"><div style="padding:6px 8px;color:#ffc75a;font-weight:bold;border-bottom:1px solid #5a4228">招式主幹 <span style="color:#a98;font-weight:normal;font-size:11px">（與盤面共用點數）</span></div>${trunk}</div>
+      <div style="position:absolute;left:12px;top:46px;display:flex;gap:4px;pointer-events:auto">
+        <button id="tb-tab-board" style="${BTN};${this.trunkOpen ? '' : 'background:#6a3a10;border-color:#ffb040'}">被動盤</button>
+        <button id="tb-tab-trunk" style="${BTN};${this.trunkOpen ? 'background:#6a3a10;border-color:#ffb040' : ''}">招式主幹 ${trunkSpent}</button></div>
+      ${this.trunkOpen ? `<div id="tb-trunk" style="position:absolute;left:12px;top:80px;width:214px;${PANEL}"><div style="padding:6px 8px;color:#ffc75a;font-weight:bold;border-bottom:1px solid #5a4228;display:flex;justify-content:space-between">招式主幹 <span style="color:#a98;font-weight:normal;font-size:11px">與盤面共用點數</span><button id="tb-trunk-x" style="${BTN};padding:0 6px">✕</button></div>${trunk}</div>` : ''}
       <canvas id="tb-mini" width="200" height="140" style="position:absolute;right:12px;top:46px;${PANEL};cursor:pointer"></canvas>
       <div style="position:absolute;left:240px;right:12px;bottom:10px;display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;pointer-events:none">
         <div style="pointer-events:auto;color:#ffc75a;font-weight:bold;margin-right:4px">珠寶${this.picked ? ' <span style="color:#ffe066;font-weight:normal">（點已點亮的珠寶孔鑲嵌）</span>' : ''}</div>${jewels}</div>
@@ -129,8 +136,8 @@ export class TalentBoardController {
       const node = (id: string, big: boolean) => {
         const a = BOARD.asc.get(id)!; const on = s.asc.includes(id); const can = canAllocAsc(BOARD, s, id, { level: lvl, evoStage: evo }).ok; const sz = big ? 92 : 64;
         return `<div data-asc="${id}" data-tipasc="${id}" style="position:relative;width:${sz}px;height:${sz}px;cursor:pointer;margin:0 auto">
-          <img src="${ART}ascendancy/asc-${id}.png" style="position:absolute;left:${sz * 0.2}px;top:${sz * 0.2}px;width:${sz * 0.6}px;height:${sz * 0.6}px;border-radius:50%;${on ? 'box-shadow:0 0 14px 4px rgba(230,120,255,.8)' : can ? '' : 'filter:grayscale(1) brightness(.55)'}" draggable="false">
           <img src="${ART}talent-frame-ascendancy.png" style="position:absolute;inset:0;width:${sz}px;height:${sz}px;${on || can ? '' : 'filter:brightness(.6)'}" draggable="false">
+          <img src="${ART}${ascArt(id)}" style="position:absolute;left:${sz * 0.16}px;top:${sz * 0.16}px;width:${sz * 0.68}px;height:${sz * 0.68}px;object-fit:contain;${big ? '' : 'border-radius:50%;'}${on ? 'box-shadow:0 0 14px 4px rgba(230,120,255,.8)' : can ? '' : 'filter:grayscale(1) brightness(.55)'}" draggable="false">
           <div style="position:absolute;top:${sz}px;left:-30px;right:-30px;text-align:center;font-size:12px;color:${on ? '#e6c8ff' : '#aaa'}">${esc(a.name)}</div></div>`;
       };
       const e = BOARD.asc.get(entry)!;
@@ -147,6 +154,9 @@ export class TalentBoardController {
     const $ = (s: string) => this.root.querySelector<HTMLElement>(s); const b = this.b; const sim = this.sim();
     $('#tb-ok')?.addEventListener('click', () => { const r = applyPlan(b, this.plan, this.paid()); this.msg = r.ok ? '' : `無法：${REASON[r.reason ?? ''] ?? r.reason}`; if (r.ok) this.plan = emptyPlan(); this.after(); this.render(); });
     $('#tb-cancel')?.addEventListener('click', () => { this.plan = emptyPlan(); this.msg = ''; this.render(); });
+    $('#tb-tab-board')?.addEventListener('click', () => { this.trunkOpen = false; this.render(); });
+    $('#tb-tab-trunk')?.addEventListener('click', () => { this.trunkOpen = !this.trunkOpen; this.render(); });
+    $('#tb-trunk-x')?.addEventListener('click', () => { this.trunkOpen = false; this.render(); });
     $('#tb-fit')?.addEventListener('click', () => this.scene?.resetView());
     $('#tb-asc')?.addEventListener('click', () => { this.ascOpen = !this.ascOpen; this.render(); });
     $('#tb-ascx')?.addEventListener('click', () => { this.ascOpen = false; this.render(); });
@@ -200,7 +210,8 @@ export class TalentBoardController {
     const head = (title: string, sub: string) => `<div style="text-align:center;color:#ffc75a;font-size:17px;font-weight:bold">${esc(title)}</div><div style="text-align:center;color:#a99;font-size:11px;margin:2px 0 8px">${esc(sub)}</div>`;
     if (this.hoverJewel) {
       const j = s.jewels.find((x) => x.uid === this.hoverJewel); if (!j) return '';
-      return head(jewelName(j), isLegendary(j) ? '傳奇珠寶 · 轉換型' : '珠寶 · 數值詞綴') + (isLegendary(j) ? line(esc(LEG.get(j.base)?.rule ?? '')) + line('只轉換範圍內已點亮的小型天賦；轉換後仍套用上限', '#a99', 'font-size:11px;margin-top:4px')
+      const inSock = this.b.socketedUids().has(j.uid);
+      return head(jewelName(j), isLegendary(j) ? '傳奇珠寶 · 轉換型' : '珠寶 · 數值詞綴') + (inSock && !this.jewelLive(j.uid) ? line('未生效：所在珠寶孔沒有連到起點', '#ff7a6a') : '') + (isLegendary(j) ? line(esc(LEG.get(j.base)?.rule ?? '')) + line('只轉換範圍內已點亮的小型天賦（每顆節點最多被最近的一顆傳奇珠寶轉換）；轉換後仍套用上限；同種傳奇全盤限一顆', '#a99', 'font-size:11px;margin-top:4px')
         : (j.affixes ?? []).map((a) => line(esc(fmtVal(a.value, a.effectType)))).join('')) + line(this.picked === j.uid ? '已選取：點擊已點亮的珠寶孔鑲嵌' : '點擊選取後鑲嵌到珠寶孔', '#7fd8ff', 'margin-top:8px');
     }
     if (this.hoverId?.startsWith('asc:')) {
@@ -212,6 +223,7 @@ export class TalentBoardController {
     const { title, desc } = split(n.name); let body = '';
     if (n.kind === 'jewel') {
       const sj = this.socketed(n.id); const pj = this.pickedJewel();
+      if (sj && !this.socketLive(n.id)) body += line('未生效：珠寶孔沒有連到起點，效果已關閉（珠寶仍在孔內）', '#ff7a6a');
       body += sj ? line(`已鑲嵌：<b>${esc(jewelName(sj))}</b>`, '#9fd0ff') + (isLegendary(sj) ? '' : (sj.affixes ?? []).map((a) => line(esc(fmtVal(a.value, a.effectType)))).join('')) : line('空的珠寶孔', '#a99');
       const j = pj ?? sj;
       if (j && isLegendary(j)) {
@@ -226,8 +238,11 @@ export class TalentBoardController {
       const eff: Effect = { effectType: n.effectType, value: n.value };
       if (live) {
         body += line(`<s style="color:#887">${esc(effText(eff))}</s>`); body += live.after.map((e) => line('→ ' + esc(effText(e)), live.active ? '#9fe08f' : '#8fa88a')).join('');
-        body += line(`（${esc(jewelName(s.jewels.find((x) => x.uid === live.jewel)!))}${live.active ? '' : '：點亮後生效'}）`, '#a99', 'font-size:11px');
-      } else if (n.effectType !== 'keystone' && n.effectType !== 'none') { const t = effectLine(asNode(n.id, eff), m.nodes.includes(n.id) ? 1 : 0); if (t) body += line(esc(t)); }
+        body += line(`（${esc(jewelName(s.jewels.find((x) => x.uid === live.jewel)!))}${live.active ? '' : '：點亮且珠寶孔連通後生效'}）`, '#a99', 'font-size:11px');
+        for (const e of live.after) { const c2 = capLine(asNode(n.id, e), sim.bon, sim.mech); if (c2) body += line(esc(c2), c2.includes('已達上限') ? '#ffb070' : '#b8ab98', 'font-size:12px'); }
+      } else if (n.effectType !== 'keystone' && n.effectType !== 'none') {
+        const planned = this.plan.add.includes(n.id);
+        const t = planned ? effectLine(asNode(n.id, eff), 1).replace('目前', '規劃後').replace(/（已滿）/, '') : effectLine(asNode(n.id, eff), this.b.s.board.nodes.includes(n.id) ? 1 : 0); if (t) body += line(esc(t), planned ? '#9fe0ff' : '#f2e2c0'); }
       const cl = n.effectType !== 'keystone' && !live ? capLine(asNode(n.id, eff), sim.bon, sim.mech, (sim.player.hp ?? 1) / Math.max(1, sim.player.maxHp ?? 1)) : '';
       if (cl) body += line(esc(cl), cl.includes('已達上限') ? '#ffb070' : '#b8ab98', 'font-size:12px;margin-top:2px');
       if (n.drawback) body += line(`代價：${esc(n.drawback)}`, '#ff5a4a', 'margin-top:4px');
@@ -236,7 +251,7 @@ export class TalentBoardController {
     return head(title, `${KIND[n.kind]}${n.branch ? ` · ${n.branch}` : ''}`) + body;
   }
   private inRadiusConversion(id: string, m: ReturnType<TalentBoardController['merged']>): Conversion | undefined {
-    for (const [sock, uid] of Object.entries(m.sockets)) { const j = m.jewels.find((x) => x.uid === uid); if (!j || !(BOARD.socketRadius.get(sock) ?? []).includes(id)) continue; const r = previewConversion(BOARD, sock, j, m).find((x) => x.id === id); if (r) return { ...r, active: r.active && m.nodes.includes(sock) }; }
+    for (const [sock, uid] of Object.entries(m.sockets)) { const j = m.jewels.find((x) => x.uid === uid); if (!j || BOARD.owner.get(id) !== sock) continue; const r = previewConversion(BOARD, sock, j, m).find((x) => x.id === id); if (r) return { ...r, active: r.active && socketActive(BOARD, m, sock) }; }
     return undefined;
   }
   private statusLine(n: BoardNode, m: ReturnType<TalentBoardController['merged']>): string {
@@ -255,7 +270,7 @@ const convRow = (r: Conversion): string => `<div style="font-size:12px;margin-to
 const REASON: Record<string, string> = {
   notAdjacent: '需要先連到已點亮的節點', requires: '需要先點前置節點', exclusive: '已選擇其他關鍵天賦', points: '點數不足', allocated: '已點亮', disconnects: '退點會讓其他節點斷開',
   requiredBy: '基石需要此節點', start: '起點不可變更', ashShard: '灰燼碎片不足', gold: '金幣不足', level: '等級不足', maxRank: '已達最高級', free: '基本攻擊至少保留 1 級',
-  socketNotAllocated: '需要先點亮珠寶孔', notSocket: '不是珠寶孔', noJewel: '沒有這顆珠寶', notAllocated: '尚未點亮', empty: '珠寶孔是空的',
+  socketNotAllocated: '需要先點亮珠寶孔', dupLegendary: '同種傳奇珠寶全盤只能鑲嵌一顆', notSocket: '不是珠寶孔', noJewel: '沒有這顆珠寶', notAllocated: '尚未點亮', empty: '珠寶孔是空的',
 };
 const ASC_REASON: Record<string, string> = { evoStage: '進化成噴火龍後解鎖', points: '昇華點不足（Lv36/42/48 各 1 點）', requires: '需要先點入口節點', exclusive: '已選擇另一個昇華', allocated: '已習得' };
 

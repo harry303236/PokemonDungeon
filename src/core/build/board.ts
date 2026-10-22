@@ -12,7 +12,7 @@ import { warnOnce as _w, type Modifier } from './pipeline';
 
 export interface BoardNode {
   id: string; kind: 'start' | 'small' | 'notable' | 'keystone' | 'jewel'; name: string; effectType: string; value: number | string | Record<string, number | string> | null;
-  pos: { x: number; y: number }; branch?: string; region?: string; startFor?: string; requires?: string[]; exclusiveGroup?: string | null; drawback?: string; radius?: number; desc?: string;
+  pos: { x: number; y: number }; branch?: string; region?: string; startFor?: string; requires?: string[]; exclusiveGroup?: string | null; drawback?: string; radius?: number; affectsNodes?: string[]; desc?: string;
 }
 export interface AscNode { id: string; name: string; entry?: boolean; effectType: string; value: number | Record<string, number>; desc?: string; requires?: string[]; exclusiveGroup?: string | null }
 export interface TrunkMove { move: string; learnLevel: number; maxRank: number; enhance: string; variantAtRank: number; note?: string }
@@ -25,14 +25,18 @@ export interface BoardState { nodes: string[]; moves: Record<string, number>; as
 export interface Effect { effectType: string; value: number | string | Record<string, number | string> | null }
 
 export class Board {
-  readonly nodes = new Map<string, BoardNode>(); readonly adj = new Map<string, Set<string>>(); readonly socketRadius = new Map<string, string[]>();
+  readonly nodes = new Map<string, BoardNode>(); readonly adj = new Map<string, Set<string>>(); readonly socketRadius = new Map<string, string[]>(); readonly owner = new Map<string, string>();
+  sockDist(sock: string, id: string): number { const a = this.nodes.get(sock)!.pos, c = this.nodes.get(id)!.pos; return Math.hypot(a.x - c.x, a.y - c.y); }
   readonly asc = new Map<string, AscNode>(); readonly trunk = new Map<string, TrunkMove>(); edgeCount = 0;
   constructor(readonly raw: BoardRaw) {
     for (const n of raw.nodes) { this.nodes.set(n.id, n); this.adj.set(n.id, new Set()); }
     for (const [a, b] of raw.edges) { if (!this.nodes.has(a) || !this.nodes.has(b)) continue; this.adj.get(a)!.add(b); this.adj.get(b)!.add(a); this.edgeCount++; }
-    // precompute each socket's in-radius node list once at load
-    for (const s of raw.nodes) if (s.kind === 'jewel') this.socketRadius.set(s.id, raw.nodes.filter((n) => n.id !== s.id && n.kind !== 'jewel' && n.kind !== 'start'
-      && Math.hypot(n.pos.x - s.pos.x, n.pos.y - s.pos.y) <= (s.radius ?? 0)).map((n) => n.id));
+    // in-radius lists come ONLY from data (affectsNodes, precomputed by gen_v4.py with nearest-socket-wins); never recomputed at runtime
+    for (const s of raw.nodes) if (s.kind === 'jewel') this.socketRadius.set(s.id, [...(s.affectsNodes ?? [])]);
+    // node -> owning socket (data guarantees uniqueness; if data ever overlaps, nearest socket then id order wins)
+    for (const [sock, ids] of this.socketRadius) for (const id of ids) {
+      const cur = this.owner.get(id); if (!cur || this.sockDist(sock, id) < this.sockDist(cur, id) || (this.sockDist(sock, id) === this.sockDist(cur, id) && sock < cur)) this.owner.set(id, sock);
+    }
     for (const a of raw.ascendancy) this.asc.set(a.id, a);
     for (const t of raw.moveTrunk) this.trunk.set(t.move, t);
   }
@@ -135,16 +139,23 @@ export function previewConversion(b: Board, socket: string, j: JewelItem, s: Boa
   for (const id of b.socketRadius.get(socket) ?? []) { const n = b.nodes.get(id)!; const after = convert(n, j.base); if (after) out.push({ id, jewel: j.uid, before: { effectType: n.effectType, value: n.value }, after, active: alloc.has(id) }); }
   return out;
 }
-/** Live conversions: socket allocated + jewel present; only allocated small nodes in radius; first socket wins on overlap. */
+/** A socket is live only if it is allocated AND connected to the start (a respec that cuts it off turns the jewel off; the jewel stays socketed). */
+export function socketActive(b: Board, s: BoardState, sock: string, reach = reachableFromStart(b, new Set(s.nodes))): boolean { return s.nodes.includes(sock) && reach.has(sock); }
+/** Only one of each legendary type may be socketed on the whole board. */
+export function legendaryConflict(s: BoardState, sock: string, j: JewelItem): string | null {
+  if (!isLegendary(j)) return null;
+  for (const [k, uid] of Object.entries(s.sockets)) { if (k === sock || uid === j.uid) continue; if (s.jewels.find((x) => x.uid === uid)?.base === j.base) return k; }
+  return null;
+}
+/** Live conversions: socket live + jewel present; only allocated small nodes owned by that socket (nearest socket wins, at most one legendary per node). */
 export function conversionsFor(b: Board, s: BoardState): Map<string, Conversion> {
-  const alloc = new Set(s.nodes); const out = new Map<string, Conversion>();
+  const out = new Map<string, Conversion>(); const reach = reachableFromStart(b, new Set(s.nodes));
   for (const [sock, uid] of Object.entries(s.sockets)) {
-    const j = s.jewels.find((x) => x.uid === uid); if (!j || !alloc.has(sock)) continue;
-    for (const c of previewConversion(b, sock, j, s)) if (c.active && !out.has(c.id)) out.set(c.id, c);
+    const j = s.jewels.find((x) => x.uid === uid); if (!j || !socketActive(b, s, sock, reach)) continue;
+    for (const c of previewConversion(b, sock, j, s)) if (c.active && b.owner.get(c.id) === sock) out.set(c.id, c);
   }
   return out;
 }
-
 // ---------- effects ----------
 const asc = (k: string, f: (v: Record<string, number> & number) => unknown): Handler => (b, _t, n) => { (b.asc as Record<string, unknown>)[k] = f(n.value as never); };
 /** v4 effect registry = v3 TALENT_EFFECTS + new board / ascendancy types. */
@@ -182,7 +193,8 @@ export const nodeEffects = (b: Board, s: BoardState, id: string, conv = conversi
 export function boardBonuses(b: Board, s: BoardState, engineId: (m: string) => string = (m) => m): PlayerBonuses {
   const out = emptyBonuses(); const conv = conversionsFor(b, s); const alloc = new Set(s.nodes);
   for (const id of s.nodes) { if (!b.nodes.has(id)) continue; for (const e of nodeEffects(b, s, id, conv)) applyEffect(out, e, id); }
-  for (const [sock, uid] of Object.entries(s.sockets)) { if (!alloc.has(sock)) continue; const j = s.jewels.find((x) => x.uid === uid); for (const a of j?.affixes ?? []) applyEffect(out, a, `jewel:${uid}`); }
+  const reach = reachableFromStart(b, new Set(s.nodes)); void alloc;
+  for (const [sock, uid] of Object.entries(s.sockets)) { if (!socketActive(b, s, sock, reach)) continue; const j = s.jewels.find((x) => x.uid === uid); for (const a of j?.affixes ?? []) applyEffect(out, a, `jewel:${uid}`); }
   for (const [m, r] of Object.entries(s.moves)) if (r >= 2) MOVE_ENHANCE[m]?.(out, engineId(m));
   for (const id of s.asc) { const n = b.asc.get(id); if (n) applyEffect(out, n, id); }
   return out;
