@@ -34,6 +34,13 @@ export class TalentBoardController {
     this.root = document.createElement('div'); this.root.id = 'talent-board-ui';
     Object.assign(this.root.style, { position: 'fixed', inset: '0', pointerEvents: 'none', zIndex: '12', display: 'none', color: '#ddd', fontSize: '13px', userSelect: 'none', fontFamily: '"Noto Sans CJK TC", sans-serif' });
     document.body.appendChild(this.root);
+    // DOM re-renders destroy hovered cards without a mouseleave: drop stale jewel/ascendancy hovers once the pointer is elsewhere
+    this.onDocMove = (e: MouseEvent) => {
+      if (!this.open) return; const el = e.target as Element | null;
+      if (this.hoverJewel && !el?.closest?.('[data-jw]')) { this.hoverJewel = null; this.renderTip(); }
+      if (this.hoverId?.startsWith('asc:') && !el?.closest?.('[data-asc]')) { this.hoverId = null; this.renderTip(); }
+    };
+    document.addEventListener('mousemove', this.onDocMove);
   }
   setOpen(v: boolean): void {
     if (v === this.open) return; this.open = v; this.root.style.display = v ? 'block' : 'none';
@@ -43,7 +50,8 @@ export class TalentBoardController {
   }
   toggle(): void { this.setOpen(!this.open); }
   attach(s: TalentBoardScene): void { this.scene = s; this.render(); }
-  destroy(): void { this.root.remove(); }
+  private onDocMove: (e: MouseEvent) => void;
+  destroy(): void { document.removeEventListener('mousemove', this.onDocMove); this.root.remove(); }
 
   // ----- state helpers -----
   private get b() { return this.sim().build; }
@@ -96,6 +104,7 @@ export class TalentBoardController {
 
   // ----- DOM -----
   render(): void {
+    const keepScroll = this.root.querySelector<HTMLElement>('#tb-jwbar')?.scrollLeft ?? 0;
     const sim = this.sim(); const b = this.b; const lvl = sim.progress.level; const evo = sim.evoStage + 1; const m = this.merged();
     const left = this.total() - boardPointsSpent(BOARD, m); const lp = Math.min(BOARD.meta.totalPoints, lvl - 1); const dp = b.debug ? b.s.bonusPoints : 0;
     const cost = planCost(this.plan, this.paid());
@@ -111,7 +120,8 @@ export class TalentBoardController {
         <div style="font-size:11px;color:${r >= 2 ? '#f2e2c0' : '#776'}">第 2 級：${esc(t.enhance)}</div>${variant}</div>`;
     }).join('');
     const socketedUids = b.socketedUids(); const trunkSpent = `${Object.values(m.moves).reduce((a, r) => a + r, 0)}/${BOARD.trunk.size * 3}`;
-    const jewels = b.s.board.jewels.map((j) => { const dup = this.dupBlocked(j); return `<div data-jw="${j.uid}" ${dup ? 'data-dup="1" ' : ''}style="${PANEL};cursor:${dup ? 'not-allowed;opacity:.42;filter:grayscale(1)' : 'pointer'};display:flex;gap:6px;align-items:center;padding:4px 8px;min-width:120px;${this.picked === j.uid ? 'border-color:#ffe066;box-shadow:0 0 10px #ffe066' : ''}">
+    const jwOrder = (j: JewelItem) => (socketedUids.has(j.uid) ? 0 : isLegendary(j) ? 1 : 2);
+    const jewels = [...b.s.board.jewels].sort((x, y) => jwOrder(x) - jwOrder(y)).map((j) => { const dup = this.dupBlocked(j); return `<div data-jw="${j.uid}" ${dup ? 'data-dup="1" ' : ''}style="${PANEL};flex-shrink:0;cursor:${dup ? 'not-allowed;opacity:.42;filter:grayscale(1)' : 'pointer'};display:flex;gap:6px;align-items:center;padding:4px 8px;min-width:120px;${this.picked === j.uid ? 'border-color:#ffe066;box-shadow:0 0 10px #ffe066' : ''}">
         <img src="${ART}${jewelArt(j.base)}" style="width:30px;height:34px;object-fit:contain" draggable="false">
         <div style="font-size:12px;line-height:1.3"><b style="color:${isLegendary(j) ? '#ff9a3a' : '#9fd0ff'}">${esc(jewelName(j))}</b>${socketedUids.has(j.uid) ? (this.jewelLive(j.uid) ? ' <span style="color:#8c8;font-size:11px">已鑲嵌</span>' : ' <span style="color:#d88;font-size:11px">已鑲嵌（未生效）</span>') : ''}<br>
         <span style="color:#aaa">${dup ? '已有同名珠寶鑲嵌' : isLegendary(j) ? '傳奇 · 轉換' : (j.affixes ?? []).map((a) => esc(fmtVal(a.value, a.effectType))).join('、')}</span></div></div>`; }).join('') || '<span style="color:#776;pointer-events:auto">尚無珠寶（地城掉落）</span>';
@@ -129,14 +139,16 @@ export class TalentBoardController {
         <button id="tb-tab-trunk" style="${BTN};${this.trunkOpen ? 'background:#6a3a10;border-color:#ffb040' : ''}">招式主幹 ${trunkSpent}</button></div>
       ${this.trunkOpen ? `<div id="tb-trunk" style="position:absolute;left:12px;top:80px;width:214px;${PANEL}"><div style="padding:6px 8px;color:#ffc75a;font-weight:bold;border-bottom:1px solid #5a4228;display:flex;justify-content:space-between">招式主幹 <span style="color:#a98;font-weight:normal;font-size:11px">與盤面共用點數</span><button id="tb-trunk-x" style="${BTN};padding:0 6px">✕</button></div>${trunk}</div>` : ''}
       <canvas id="tb-mini" width="200" height="140" style="position:absolute;right:12px;top:46px;${PANEL};cursor:pointer"></canvas>
-      <div style="position:absolute;left:240px;right:12px;bottom:10px;display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;pointer-events:none">
-        <div style="pointer-events:auto;color:#ffc75a;font-weight:bold;margin-right:4px">珠寶${this.picked ? ' <span style="color:#ffe066;font-weight:normal">（點已點亮的珠寶孔鑲嵌）</span>' : ''}</div>${jewels}</div>
+      <div style="position:absolute;left:${this.trunkOpen ? 240 : 12}px;right:12px;bottom:10px;display:flex;gap:8px;align-items:center;pointer-events:none">
+        <div style="pointer-events:auto;color:#ffc75a;font-weight:bold;white-space:nowrap">珠寶 ${b.s.board.jewels.length ? `<span style="color:#a98;font-weight:normal;font-size:11px">${b.s.board.jewels.length}</span>` : ''}${this.picked ? '<br><span style="color:#ffe066;font-weight:normal;font-size:11px">點已點亮的珠寶孔鑲嵌</span>' : ''}</div>
+        <div id="tb-jwbar" style="pointer-events:auto;display:flex;flex-wrap:nowrap;gap:8px;overflow-x:auto;overflow-y:hidden;padding-bottom:4px;min-width:0;flex:1">${jewels}</div></div>
       ${this.msg ? `<div style="position:absolute;left:50%;top:44px;transform:translateX(-50%);color:#f88;${PANEL};padding:4px 10px">${esc(this.msg)}</div>` : ''}
       ${planEmpty(this.plan) ? '' : `<div id="tb-plan" style="position:absolute;right:12px;bottom:70px;width:330px;${PANEL};padding:8px 10px">
         <div style="font-size:12px;line-height:1.5"><b style="color:#7fd8ff">規劃中</b> ${sum}<br><span style="color:#cba">花費：灰燼碎片 ${cost.ashShards} · 金幣 ${cost.gold} · 點數 ${this.plan.add.length + Object.values(this.plan.moves).reduce((a, d) => a + Math.max(0, d), 0)}${planRefunds(this.plan) && !this.paid() ? '（Lv16 前退點免費）' : ''}</span></div>
         <div style="margin-top:6px;display:flex;gap:8px;justify-content:flex-end"><button id="tb-ok" style="${BTN};border-color:#c90">確認</button><button id="tb-cancel" style="${BTN}">取消</button></div></div>`}
       ${this.ascOpen ? this.ascHtml(lvl, evo) : ''}
       <div id="tb-tip"></div>`;
+    const bar = this.root.querySelector<HTMLElement>('#tb-jwbar'); if (bar) { bar.scrollLeft = keepScroll; bar.addEventListener('wheel', (ev) => { ev.preventDefault(); ev.stopPropagation(); bar.scrollLeft += ev.deltaY + ev.deltaX; }, { passive: false }); }
     this.wire(); this.renderTip(); this.cameraChanged(); this.scene?.redraw();
   }
   private ascHtml(lvl: number, evo: number): string {
