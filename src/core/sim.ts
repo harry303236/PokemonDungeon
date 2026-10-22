@@ -152,6 +152,8 @@ export class Sim {
     return amt;
   }
   lastPlayerDmg = 0;
+  /** out-of-combat clock: last time the player dealt or took damage */
+  lastCombatT = -1e9;
   private dodgeBuffUntil = -1; frameNo = 0; private killRefundFrame = -1; private killRefundsThisFrame = 0; private killRefundLog: Array<[number, number]> = [];
   /** Re-derive talent bonuses + player stats after a build change (keeps HP ratio). */
   refreshBuild(): void {
@@ -455,6 +457,7 @@ export class Sim {
     const { dmg, typeEff } = calcDamage({ level: src.level ?? 1, power: m.power, atk: phys ? a.atk : a.spa, def: phys ? d.def : d.spd, moveType: m.type,
       attackerTypes: src.types ?? [], defenderTypes: target.types ?? [], isCrit, roll: this.rng.next(), bonus: mods?.powerBonus ?? 0, mult: mult * tierDmg,
       burnedPhysical: phys && !!src.burn });
+    if (target.kind === 'player' || src.team === 'player') this.lastCombatT = this.time;
     if (target.kind === 'player' && target.maxHp) { // additive damage-taken sum, then capped (meta.mechanics)
       const dr = damageReductionPct(this.bon, this.mech, (target.hp ?? 0) / target.maxHp).value; const scaled = Math.max(1, Math.round(dmg * (1 - dr / 100)));
       target.hp -= scaled; this.lastPlayerDmg = scaled;
@@ -691,13 +694,13 @@ export class Sim {
 
   private statusStep(dt: number): void {
     const P = this.player;
-    if (this.bon.hpRegenPctPerSec > 0 && !P.dead && P.maxHp && P.hp !== undefined) P.hp = Math.min(P.maxHp, P.hp + P.maxHp * this.bon.hpRegenPctPerSec / 100 * dt);
+    const oc = this.bon.oocRegen; if (oc && !P.dead && P.maxHp && P.hp !== undefined && this.time - this.lastCombatT >= oc.delaySec) P.hp = Math.min(P.maxHp, P.hp + P.maxHp * oc.pct / 100 * dt); // 再燃
     if (this.bon.keystones.has('ks_solarPower') && this.sunT > 0 && !P.dead && P.maxHp && P.hp !== undefined) P.hp = Math.max(1, P.hp - P.maxHp * 0.01 * dt); // solar drain
     for (const e of [...this.world.query('monster'), this.player]) {
       if (e.dead || e.hp === undefined || !e.maxHp) continue;
       if (e.burn) {
         const bmul = e.kind === 'monster' ? 1 + this.bon.burnDmgPct / 100 : 1;
-        e.hp -= e.maxHp * (e.isBoss ? BALANCE.burnPctBoss : BALANCE.burnPctPerSec) * e.burn.stacks * dt * bmul;
+        e.hp -= e.maxHp * (e.isBoss ? BALANCE.burnPctBoss : BALANCE.burnPctPerSec) * e.burn.stacks * dt * bmul; if (e.kind === 'player' || e.burn.src === this.player.id) this.lastCombatT = this.time;
         e.burn.t -= dt;
         const src = e.burn.src;
         if (e.burn.t <= 0) e.burn = undefined;

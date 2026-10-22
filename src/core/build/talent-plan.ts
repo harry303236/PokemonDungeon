@@ -1,7 +1,7 @@
 import { canAllocate, canRefund, isImplemented, unlockLevel, moveSpeedPct, cdrPct, damageReductionPct, type PlayerBonuses, type TalentMechanics, type Capped, type Alloc, type TalentData, type TalentNode, type TalentCtx } from './talents';
 import LABELS from '../../data/build/talent-labels.json';
 
-type Lbl = { label: string; fmt: 'pct' | 'frac' | 'flat' | 'flag' | 'none' | 'tpl'; tpl?: string; cap?: string; stat?: 'moveSpeed' | 'cdr' | 'dr' };
+type Lbl = { label: string; fmt: 'pct' | 'frac' | 'flat' | 'flag' | 'none' | 'tpl'; tpl?: string; cap?: string; stat?: 'moveSpeed' | 'cdr' | 'dr'; inv?: boolean; arrow?: boolean };
 const LBL = LABELS as unknown as Record<string, Lbl>;
 export type NodeKind = 'root' | 'small' | 'notable' | 'keystone';
 export const nodeKind = (n: TalentNode): NodeKind => (n.branch === 'core' ? 'root' : n.effectType === 'keystone' ? 'keystone' : n.id.endsWith('_mid') || n.id.includes('_n_') ? 'notable' : 'small');
@@ -20,11 +20,15 @@ export function effectLine(n: TalentNode, rank: number): string {
       if (key === 'moveName') return MOVE_NAMES[String(v.move)] ?? String(v.move);
       if (key === 'limit') return String(TPL_EXTRA.limit ?? '?');
       const x = v[key]; if (typeof x !== 'number') return String(x ?? '?');
-      return String(key === 'pct' || key === 'v' ? Math.round(x * k * 100) / 100 : x);
+      const y = l.inv && key === 'pct' ? -x : x; return String(key === 'pct' || key === 'v' ? Math.round(y * k * 100) / 100 : y);
     });
     return rank >= n.maxRank || n.maxRank === 1 ? (rank ? fill(rk) : fill(1)) : `${fill(rk)}${rank ? `（下一級 ${fill(rank + 1)}）` : ''}`;
   }
   if (l.fmt === 'flag' || typeof n.value !== 'number') return l.label;
+  if (l.arrow) { // reduction-style stats: '減傷 6% → 8%' (negatives shown as positive reductions)
+    const u = (l.inv ? -1 : 1) * n.value; const f = (x: number): string => `${Math.round((l.fmt === 'frac' ? x * 100 : x) * 100) / 100}${l.fmt === 'flat' ? '' : '%'}`;
+    return rank >= n.maxRank ? `${l.label} ${f(u * rank)}（已滿）` : `${l.label} ${f(u * rank)} → ${f(u * (rank + 1))}`;
+  }
   const v = n.value; const cur = rank > 0 ? fmtN(l, v * rank) : '無';
   return rank >= n.maxRank ? `${l.label}：目前 ${cur}（已滿）` : `${l.label}：目前 ${cur}，下一級 ${fmtN(l, v * (rank + 1))}`;
 }

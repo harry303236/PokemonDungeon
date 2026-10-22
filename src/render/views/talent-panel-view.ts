@@ -19,8 +19,9 @@ const SIZE: Record<NodeKind, number> = { small: 50, notable: 64, keystone: 96, r
 const FRAME: Record<NodeKind, string> = { small: 'small', notable: 'notable', keystone: 'keystone', root: 'notable' };
 const COLX = [300, 640, 980];
 // rows (bottom→top growth): root, T1 pair, T1 mid, T2 pair, T2 mid, T3 pair, keystone
-const ROWY = { ks: 118, t3: 212, t2mid: 268, t2: 324, t1mid: 380, t1: 436, root: 520 };
-const UTIL_ROWS = [565, 620, 675], UTIL_X0 = 100, UTIL_DX = 82;
+const ROWY = { ks: 112, t3: 198, t2mid: 250, t2: 302, t1mid: 354, t1: 406, root: 486 };
+const BUS_Y = 448; // orthogonal 'bus' between root and the T1 row (elbow connectors)
+const UTIL_ROWS = [536, 586, 636], UTIL_X0 = 100, UTIL_DX = 82;
 
 /** Utility branch (meta.ui.utilityBranchLayout): subtrees hang off root and spread left/right horizontally below the main branches.
  *  Tier-1 subtrees are balanced across sides; depth -> x step outward; each leaf path gets its own row. */
@@ -69,7 +70,9 @@ export class TalentPanelView {
     const lines = UI.drawPrereqLines === false ? '' : nodes.flatMap((n) => [...n.requires, ...(n.requiresAny ?? [])].filter((r) => pos.has(r)).map((r) => {
       const p = pos.get(n.id)!, q = pos.get(r)!; const s1 = st(n.id), s2 = st(r);
       const on = s1 !== 'off' && s2 !== 'off'; const plan = on && (s1 === 'plan' || s2 === 'plan');
-      return `<line x1="${q.x}" y1="${q.y}" x2="${p.x}" y2="${p.y}" stroke="${plan ? '#7fd8ff' : on ? '#f0a83a' : '#5a4a3a'}" stroke-width="${on ? 4 : 2.5}" ${plan ? 'stroke-dasharray="8 6"' : ''} ${on ? 'filter="url(#tglow)"' : 'opacity=".75"'}/>`;
+      // root -> main-branch T1: elbow via the bus so no long diagonal crosses other nodes
+      const elbow = r === 'root' && !util.has(n.id) ? `${q.x},${q.y} ${q.x},${BUS_Y} ${p.x},${BUS_Y} ${p.x},${p.y}` : '';
+      return `<${elbow ? `polyline fill="none" stroke-linejoin="round" points="${elbow}"` : `line x1="${q.x}" y1="${q.y}" x2="${p.x}" y2="${p.y}"`} stroke="${plan ? '#7fd8ff' : on ? '#f0a83a' : '#5a4a3a'}" stroke-width="${on ? 4 : 2.5}" ${plan ? 'stroke-dasharray="8 6"' : ''} ${on ? 'filter="url(#tglow)"' : 'opacity=".75"'}/>`;
     })).join('');
     const badge = (n: TalentNode): string => {
       const p = pos.get(n.id)!; const k = nodeKind(n); const s = SIZE[k]; const r = m[n.id] ?? 0; const state = st(n.id);
@@ -105,11 +108,12 @@ export class TalentPanelView {
     const btn = 'background:#2a1a10;color:#ffc75a;border:1px solid #8a6a3a;padding:4px 12px;cursor:pointer;font-size:13px';
     this.el.innerHTML = `<style>@keyframes tpPulse{from{opacity:.55}to{opacity:1}}</style>
       <svg width="${W}" height="${H}" style="position:absolute;left:0;top:0;pointer-events:none"><defs><filter id="tglow" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="2.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>${lines}</svg>
-      ${branches.map((br, i) => `<div style="position:absolute;left:${(COLX[i] ?? 0) - 120}px;top:44px;width:240px;text-align:center;color:#ffc75a;font-size:22px;font-weight:bold;letter-spacing:2px;text-shadow:0 0 8px #a50">${br}</div>`).join('')}
+      ${branches.map((br, i) => `<div style="position:absolute;left:${(COLX[i] ?? 0) - 120}px;top:34px;width:240px;text-align:center;color:#ffc75a;font-size:22px;font-weight:bold;letter-spacing:2px;text-shadow:0 0 8px #a50">${br}</div>`).join('')}
       <div style="position:absolute;left:16px;top:10px;right:16px;display:flex;justify-content:space-between;color:#cba">
         <span><b style="color:#ffc75a">天賦樹</b>（T 關閉 · 左鍵規劃 · 右鍵退點/取消）</span>
         <span>等級 ${lvl}−1 = <b>${lp}</b>${b.debug && dp ? ` <span style="color:#8cf">除錯 +${dp}</span>` : ''} · 灰燼碎片 ${b.s.ashShards} · 金幣 ${b.s.gold}
         <button id="tp-reset" style="${btn};margin-left:8px">全部重置（${fullResetCost(lvl) || '免費'}${fullResetCost(lvl) ? ' 金' : ''}）</button></span></div>
+      ${util.size ? `<div style="position:absolute;left:${W / 2 - 60}px;top:${UTIL_ROWS[1]! + 26}px;width:120px;text-align:center;color:#d9b77a;font-size:15px;font-weight:bold;letter-spacing:4px;opacity:.85">通用</div>` : ''}
       ${nodes.map(badge).join('')}
       <div style="position:absolute;left:24px;bottom:18px;font-size:17px;color:#e8d6b0">剩餘點數 <b id="tp-points" style="color:#ffd27a">${left}</b>${this.msg ? ` <span style="font-size:13px;color:#f88">${this.msg}</span>` : ''}</div>
       ${anyPend ? `<div id="tp-plan" style="position:absolute;right:12px;bottom:12px;width:310px;flex-wrap:wrap;background:rgba(14,10,8,.92);border:1px solid #6a5232;padding:8px 12px;display:flex;gap:12px;align-items:center">

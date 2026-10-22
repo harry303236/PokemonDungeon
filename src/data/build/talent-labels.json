@@ -1,5 +1,5 @@
 {
-  "_doc": "effectType -> display label. fmt: pct = '+N%', flat = '+N', frac = value is a fraction shown as '+N×100%', flag = label only, none = hidden. {v} = value. tpl = object value rendered via 'tpl' with {key} placeholders (rank-scaled numbers). cap = meta.mechanics key whose cap applies (tooltip shows effective post-cap total).",
+  "_doc": "effectType -> display label. fmt: pct = '+N%', flat = '+N', frac = value is a fraction shown as '+N×100%', flag = label only, none = hidden. {v} = value. tpl = object value rendered via 'tpl' with {key} placeholders (rank-scaled numbers). cap = meta.mechanics key whose cap applies (tooltip shows effective post-cap total). inv = negative-is-good stat shown as a positive reduction ('減傷 6% → 8%'); arrow = show 'current → next' without '+'.",
   "atkPct": {
     "label": "攻擊",
     "fmt": "pct"
@@ -51,8 +51,10 @@
     "fmt": "flag"
   },
   "dodgeCdPct": {
-    "label": "閃避冷卻",
-    "fmt": "pct"
+    "label": "閃避冷卻縮減",
+    "fmt": "pct",
+    "inv": true,
+    "arrow": true
   },
   "evasionPct": {
     "label": "迴避率",
@@ -121,24 +123,25 @@
     "fmt": "pct"
   },
   "dodgeCooldownPct": {
-    "label": "閃避冷卻",
-    "fmt": "pct"
+    "label": "閃避冷卻縮減",
+    "fmt": "pct",
+    "inv": true,
+    "arrow": true
   },
   "cooldownReductionPct": {
-    "label": "技能冷卻縮減",
+    "label": "冷卻縮減",
     "fmt": "pct",
     "cap": "cooldownReductionCapPct",
-    "stat": "cdr"
+    "stat": "cdr",
+    "arrow": true
   },
   "damageTakenPct": {
-    "label": "受到傷害",
+    "label": "減傷",
     "fmt": "pct",
     "cap": "damageTakenReductionCapPct",
-    "stat": "dr"
-  },
-  "hpRegenPctPerSec": {
-    "label": "每秒回復最大 HP",
-    "fmt": "pct"
+    "stat": "dr",
+    "inv": true,
+    "arrow": true
   },
   "consumableEffectPct": {
     "label": "道具效果",
@@ -159,15 +162,22 @@
   "lowHpDamageTakenPct": {
     "label": "低血減傷",
     "fmt": "tpl",
-    "tpl": "生命低於 {threshold}% 時受到傷害 {pct}%",
+    "tpl": "生命低於 {threshold}% 時減傷 {pct}%",
     "cap": "damageTakenReductionCapPct",
-    "stat": "dr"
+    "stat": "dr",
+    "inv": true
   },
   "moveCooldownPct": {
     "label": "技能冷卻",
     "fmt": "tpl",
-    "tpl": "{moveName}冷卻 {pct}%",
+    "tpl": "{moveName}冷卻縮減 {pct}%",
     "cap": "cooldownReductionCapPct",
-    "stat": "cdr"
+    "stat": "cdr",
+    "inv": true
+  },
+  "outOfCombatRegenPctPerSec": {
+    "label": "脫戰回復",
+    "fmt": "tpl",
+    "tpl": "脫戰 {delaySec} 秒後每秒回復 {pct}% 最大 HP"
   }
 }

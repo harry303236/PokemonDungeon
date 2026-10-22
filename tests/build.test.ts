@@ -331,7 +331,7 @@ describe('talent plan/confirm + tooltip lines', () => {
   });
 });
 
-import { moveSpeedPct, cdrPct, damageReductionPct, levelReq } from '../src/core/build/talents';
+import { moveSpeedPct, cdrPct, damageReductionPct } from '../src/core/build/talents';
 import { capLine } from '../src/core/build/talent-plan';
 describe('utility branch: caps, additive DR, on-kill CD limiter (all from data)', () => {
   const M = mechanics(TALENTS); const N = (id: string) => TALENTS.nodes.find((n) => n.id === id)!;
@@ -346,8 +346,8 @@ describe('utility branch: caps, additive DR, on-kill CD limiter (all from data)'
     if (raw !== null) expect(c.raw).toBe(raw); expect(c.value).toBe(Math.min(c.raw, M.moveSpeedCapPct)); if (capped !== null) expect(c.capped).toBe(capped);
   });
   it.each([
-    [{ util_cdr: 5 }, undefined, 15, false],
-    [{ util_cdr: 5, bridge_claw_wing: 1 }, 'flame_charge', 30, null],
+    [{ util_cdr: 5 }, undefined, 5 * (N('util_cdr').value as number), null],
+    [{ util_cdr: 5, bridge_claw_wing: 1 }, 'flame_charge', 5 * (N('util_cdr').value as number) + 15, null],
   ])('CDR global + per-move summed then capped: %j', (alloc, key, raw, capped) => {
     const c = cdrPct(talentBonuses(TALENTS, alloc as Record<string, number>), M, key as string | undefined);
     expect(c.raw).toBe(raw); expect(c.value).toBe(Math.min(raw as number, M.cooldownReductionCapPct)); if (capped !== null) expect(c.capped).toBe(capped);
@@ -387,17 +387,48 @@ describe('utility branch: caps, additive DR, on-kill CD limiter (all from data)'
     const sim = new Sim(newProgress(3)); sim.build.s.talents = { root: 1, util_move: 1, util_cdr: 1, util_n_rhythm: 1 }; sim.refreshBuild();
     for (let i = 0; i < 5; i++) { sim.frameNo++; sim.onKillRefund(); } sim.time += 1.01; sim.frameNo++; expect(sim.onKillRefund()).toBeCloseTo(0.5);
   });
-  it('bridge nodes: requiresAny + level gate 16', () => {
-    expect(levelReq(TALENTS, N('bridge_sun_claw'))).toBe(16);
+  it('bridge nodes: requiresAny + evo stage 2', () => {
+    expect(N('bridge_sun_claw').evoStage).toBe(2);
     expect(canAllocate(TALENTS, { root: 1 }, 'bridge_sun_claw', { level: 20, evoStage: 2 }).ok).toBe(false);
     const a = { root: 1, claw_t1_0: 1, claw_t1_1: 1, claw_t1_mid: 1 };
     expect(canAllocate(TALENTS, a, 'bridge_sun_claw', { level: 15, evoStage: 1 }).ok).toBe(false);
     expect(canAllocate(TALENTS, a, 'bridge_sun_claw', { level: 20, evoStage: 2 }).ok).toBe(true);
+  });
+  it('專注 is 5%/rank, 追風 renamed (read from data)', () => {
+    expect(cdrPct(talentBonuses(TALENTS, { util_cdr: 2 }), M).raw).toBe(2 * (N('util_cdr').value as number));
+    expect(N('util_n_gust').name).toMatch(/^追風/);
+  });
+  it.each([
+    // [seconds since last combat event, expect regen]
+    [1, false], [2.9, false], [3.1, true],
+  ])('再燃: out of combat %d s -> regen %s', (since, regen) => {
+    const sim = new Sim(newProgress(3)); sim.build.s.talents = { util_regen: 1 }; sim.refreshBuild();
+    const P = sim.player; for (const m of sim.world.query('monster')) { m.x = -9999; m.y = -9999; }
+    P.hp = P.maxHp! * 0.5; sim.lastCombatT = sim.time - (since as number);
+    (sim as unknown as { statusStep: (dt: number) => void }).statusStep(0.1);
+    const delay = (N('util_regen').value as Record<string, number>).delaySec ?? 3;
+    expect(P.hp > P.maxHp! * 0.5).toBe(regen && since >= delay);
+  });
+  it('再燃: dealing or taking damage resets the out-of-combat clock', () => {
+    const sim = new Sim(newProgress(3)); const m = sim.world.query('monster')[0]!; m.hp = m.maxHp = 1e9;
+    sim.time = 10; sim.hit(sim.player, m, 'tackle', 1, undefined, { rootId: 1, depth: 0, seen: new Set() } as never); expect(sim.lastCombatT).toBe(10);
+    sim.time = 20; sim.player.iframes = 0; sim.player.hp = sim.player.maxHp = 1e6; sim.hit(m, sim.player, 'tackle', 1, undefined, { rootId: 2, depth: 0, seen: new Set() } as never); expect(sim.lastCombatT).toBe(20);
   });
   it('click-to-move at capped speed arrives exactly (no overshoot)', () => {
     const sim = new Sim(newProgress(3)); sim.build.s.talents = { root: 1, util_move: 3 }; sim.bon = talentBonuses(TALENTS, {}); sim.bon.speedPct = 500; // way over cap
     const spd = sim.moveSpeed(); const base = spd / (1 + M.moveSpeedCapPct / 100); expect(spd).toBeCloseTo(base * (1 + M.moveSpeedCapPct / 100));
     const P = sim.player; const tx = P.x + 37, ty = P.y; (sim as unknown as { stepAlong: (p: { x: number; y: number }[], dt: number) => void }).stepAlong([{ x: tx, y: ty }], 1);
     expect(P.x).toBeCloseTo(tx); expect(P.y).toBeCloseTo(ty);
+  });
+});
+
+describe('inverted labels', () => {
+  const N = (id: string) => TALENTS.nodes.find((n) => n.id === id)!;
+  it('damage taken / cooldowns read as positive reductions', () => {
+    expect(effectLine(N('util_res'), 3)).toBe('減傷 6% → 8%');
+    expect(effectLine(N('util_cdr'), 1)).toBe(`冷卻縮減 ${N('util_cdr').value}% → ${2 * (N('util_cdr').value as number)}%`);
+    expect(effectLine(N('util_n_guts'), 1)).toContain('減傷 15%');
+    expect(effectLine(N('bridge_claw_wing'), 1)).toContain('冷卻縮減 15%');
+    expect(effectLine(N('util_regen'), 1)).toContain('脫戰 3 秒後每秒回復 2% 最大 HP');
   });
 });

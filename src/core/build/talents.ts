@@ -15,7 +15,7 @@ export function validateTalentData(d: TalentData): string[] {
   for (const n of d.nodes) {
     if (ids.has(n.id)) errs.push(`duplicate id ${n.id}`); ids.add(n.id);
     if (!(n.maxRank >= 1)) errs.push(`${n.id}: maxRank must be >= 1`);
-    if (!stages.has(n.evoStage) && !Object.values(d.meta.evoStageUnlock).includes(n.evoStage)) errs.push(`${n.id}: evoStage ${n.evoStage} not in meta.evoStageUnlock`);
+    if (!stages.has(n.evoStage)) errs.push(`${n.id}: evoStage ${n.evoStage} not in meta.evoStageUnlock`);
     if (n.effectType === 'keystone' && !n.exclusiveGroup) errs.push(`${n.id}: keystone without exclusiveGroup`);
   }
   for (const n of d.nodes) for (const r of [...n.requires, ...(n.requiresAny ?? [])]) if (!ids.has(r)) errs.push(`${n.id}: requires unknown ${r}`);
@@ -40,7 +40,7 @@ export function canAllocate(d: TalentData, a: Alloc, id: string, ctx: TalentCtx)
   const r = a[id] ?? 0;
   if (r >= n.maxRank) return { ok: false, reason: 'maxRank' };
   if (pointsSpent(a) >= pointsTotal(d, ctx)) return { ok: false, reason: 'points' };
-  const lvlReq = levelReq(d, n); if (lvlReq !== null ? ctx.level < lvlReq : ctx.evoStage < n.evoStage) return { ok: false, reason: 'evoStage' };
+  if (ctx.evoStage < n.evoStage) return { ok: false, reason: 'evoStage' };
   // requires: ALL listed parents must have >= 1 rank (decision logged in docs/decisions.md)
   // hidden (unimplemented) parents are skipped so they never block a path
   if (effectiveRequires(d, n).some((p) => (a[p] ?? 0) < 1)) return { ok: false, reason: 'requires' };
@@ -56,25 +56,21 @@ export function canRefund(d: TalentData, a: Alloc, id: string): { ok: true } | {
   return { ok: true };
 }
 
-/** evoStage values that aren't stage numbers but equal an unlock LEVEL (bridge nodes use 16 = Charmeleon) are read as a minimum level. null = normal evo stage. */
-export function levelReq(d: TalentData, n: TalentNode): number | null {
-  const stages = Object.keys(d.meta.evoStageUnlock).map(Number); return !stages.includes(n.evoStage) && Object.values(d.meta.evoStageUnlock).includes(n.evoStage) ? n.evoStage : null;
-}
 /** Level at which a node's stage/level gate opens. */
-export const unlockLevel = (d: TalentData, n: TalentNode): number => levelReq(d, n) ?? d.meta.evoStageUnlock[String(n.evoStage)] ?? 1;
+export const unlockLevel = (d: TalentData, n: TalentNode): number => d.meta.evoStageUnlock[String(n.evoStage)] ?? 1;
 
 // ---------- effect handlers ----------
 export interface PlayerBonuses {
   fireCritPct: number; critDmgPct: number; burnConsumeMultPct: number; stunDurPct: number; projSpeedPct: number; flameChargeHits: number; comboStack: number; trailIgnite: number; trailDmgPct: number;
   atkPct: number; spAtkPct: number; defPct: number; speedPct: number; critPct: number; burnChancePct: number; burnDmgPct: number;
   ppRegenPct: number; dodgeCdPct: number; evasionPct: number; meleeLifestealPct: number; burnSpread: number;
-  maxHpPct: number; cdrPct: number; damageTakenPct: number; hpRegenPctPerSec: number; consumablePct: number;
+  maxHpPct: number; cdrPct: number; damageTakenPct: number; consumablePct: number; oocRegen: { delaySec: number; pct: number } | null;
   onDodgeSpeed: { pct: number; sec: number } | null; onKillCdRefundSec: number; lowHpDr: { threshold: number; pct: number } | null; moveCdPct: Record<string, number>;
   keystones: Set<string>; /** move-pipeline modifiers contributed by talents */ moveMods: Modifier[];
 }
 export const emptyBonuses = (): PlayerBonuses => ({ fireCritPct: 0, critDmgPct: 0, burnConsumeMultPct: 0, stunDurPct: 0, projSpeedPct: 0, flameChargeHits: 0, comboStack: 0, trailIgnite: 0, trailDmgPct: 0, atkPct: 0, spAtkPct: 0, defPct: 0, speedPct: 0, critPct: 0, burnChancePct: 0, burnDmgPct: 0, ppRegenPct: 0,
   dodgeCdPct: 0, evasionPct: 0, meleeLifestealPct: 0, burnSpread: 0,
-  maxHpPct: 0, cdrPct: 0, damageTakenPct: 0, hpRegenPctPerSec: 0, consumablePct: 0, onDodgeSpeed: null, onKillCdRefundSec: 0, lowHpDr: null, moveCdPct: {}, keystones: new Set(), moveMods: [] });
+  maxHpPct: 0, cdrPct: 0, damageTakenPct: 0, consumablePct: 0, oocRegen: null, onDodgeSpeed: null, onKillCdRefundSec: 0, lowHpDr: null, moveCdPct: {}, keystones: new Set(), moveMods: [] });
 
 type Handler = (b: PlayerBonuses, total: number, n: TalentNode, rank: number) => void;
 const pct = (k: keyof PlayerBonuses): Handler => (b, total) => { (b as unknown as Record<string, number>)[k] = ((b as unknown as Record<string, number>)[k] ?? 0) + total; };
@@ -90,8 +86,11 @@ export const TALENT_EFFECTS: Record<string, Handler> = {
   flameChargeHits: pct('flameChargeHits'), comboStack: pct('comboStack'), trailIgnite: pct('trailIgnite'), trailDmgPct: pct('trailDmgPct'),
   // utility branch (aliases map director names onto existing stat fields)
   moveSpeedPct: pct('speedPct'), defensePct: pct('defPct'), dodgeCooldownPct: pct('dodgeCdPct'),
-  maxHpPct: pct('maxHpPct'), cooldownReductionPct: pct('cdrPct'), damageTakenPct: pct('damageTakenPct'), hpRegenPctPerSec: pct('hpRegenPctPerSec'), consumableEffectPct: pct('consumablePct'),
+  maxHpPct: pct('maxHpPct'), cooldownReductionPct: pct('cdrPct'), damageTakenPct: pct('damageTakenPct'), consumableEffectPct: pct('consumablePct'),
   onKillCdRefundSec: pct('onKillCdRefundSec'),
+  /** regen % max HP/s once out of combat (no damage dealt/taken) for delaySec (data; default 3) */
+  outOfCombatRegenPctPerSec: (b, total, n, r) => { const v = n.value; const o = typeof v === 'object' ? v as Record<string, number> : { pct: Number(v) };
+    b.oocRegen = { delaySec: Number(o.delaySec ?? 3), pct: (b.oocRegen?.pct ?? 0) + Number(o.pct ?? total) * (typeof v === 'object' ? r : 1) }; },
   onDodgeMoveSpeed: (b, _t, n, r) => { const v = n.value as Record<string, number>; b.onDodgeSpeed = { pct: (b.onDodgeSpeed?.pct ?? 0) + Number(v.pct ?? 0) * r, sec: Math.max(b.onDodgeSpeed?.sec ?? 0, Number(v.sec ?? 0)) }; },
   lowHpDamageTakenPct: (b, _t, n, r) => { const v = n.value as Record<string, number>; b.lowHpDr = { threshold: Math.max(b.lowHpDr?.threshold ?? 0, Number(v.threshold ?? 0)), pct: (b.lowHpDr?.pct ?? 0) + Number(v.pct ?? 0) * r }; },
   moveCooldownPct: (b, _t, n, r) => { const v = n.value as Record<string, number | string>; const k = String(v.move); b.moveCdPct[k] = (b.moveCdPct[k] ?? 0) + Number(v.pct ?? 0) * r; },

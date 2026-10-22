@@ -24,7 +24,7 @@
       "烈陽焚天": 29,
       "龍爪狂襲": 29,
       "灼燒之翼": 29,
-      "通用": 37
+      "通用": 33
     },
     "notes": "Branch cost > half of 49 so two full branches impossible; keystone exclusiveGroup allows only one. 通用分支(35點)與主線搶點：主線滿29點後只剩20點可放生存/機動。",
     "ui": {
@@ -514,7 +514,7 @@
       "tier": 2,
       "evoStage": 1,
       "effectType": "cooldownReductionPct",
-      "value": 3,
+      "value": 5,
       "maxRank": 5,
       "requires": [
         "util_move"
@@ -537,13 +537,16 @@
     },
     {
       "id": "util_regen",
-      "name": "再燃",
+      "name": "再燃：脫戰 3 秒後每秒回復 2% HP",
       "branch": "通用",
       "tier": 2,
       "evoStage": 1,
-      "effectType": "hpRegenPctPerSec",
-      "value": 0.2,
-      "maxRank": 5,
+      "effectType": "outOfCombatRegenPctPerSec",
+      "value": {
+        "delaySec": 3,
+        "pct": 2
+      },
+      "maxRank": 1,
       "requires": [
         "util_hp"
       ],
@@ -565,7 +568,7 @@
     },
     {
       "id": "util_n_gust",
-      "name": "疾風：閃避後 2 秒移動速度 +20%",
+      "name": "追風：閃避後 2 秒移動速度 +20%",
       "branch": "通用",
       "tier": 3,
       "evoStage": 1,
@@ -616,7 +619,7 @@
       "name": "熱能循環：PP 回復 +15%",
       "branch": "通用",
       "tier": 2,
-      "evoStage": 16,
+      "evoStage": 2,
       "effectType": "ppRegenPct",
       "value": 15,
       "maxRank": 1,
@@ -633,7 +636,7 @@
       "name": "衝刺本能：閃焰衝鋒冷卻 -15%",
       "branch": "通用",
       "tier": 2,
-      "evoStage": 16,
+      "evoStage": 2,
       "effectType": "moveCooldownPct",
       "value": {
         "move": "flame_charge",
