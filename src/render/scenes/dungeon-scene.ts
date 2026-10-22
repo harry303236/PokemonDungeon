@@ -507,6 +507,7 @@ export class DungeonScene extends Phaser.Scene {
     else if (s.victory) this.banner.setText(t('hud.victory')).setAlpha(1);
     else this.banner.setAlpha(this.bannerT > 0 ? 1 : 0);
     this.banner.setPosition(W / 2, H / 2 - 120);
+    this.banner.setVisible(!this.talents.open); // talent panel open: hide toast/banner layer so it doesn't bleed through
   }
 }
 

@@ -20,8 +20,9 @@ const FRAME: Record<NodeKind, string> = { small: 'small', notable: 'notable', ke
 const COLX = [300, 640, 980];
 // rows (bottom→top growth): root, T1 pair, T1 mid, T2 pair, T2 mid, T3 pair, keystone
 const ROWY = { ks: 112, t3: 198, t2mid: 250, t2: 302, t1mid: 354, t1: 406, root: 486 };
+const TITLE_CSS = 'color:#ffc75a;font-size:22px;font-weight:bold;letter-spacing:2px;text-shadow:0 0 8px #a50';
 const BUS_Y = 448; // orthogonal 'bus' between root and the T1 row (elbow connectors)
-const UTIL_ROWS = [536, 586, 636], UTIL_X0 = 100, UTIL_DX = 82;
+const UTIL_ROWS = [530, 578, 626], UTIL_X0 = 112, UTIL_DX = 102;
 
 /** Utility branch (meta.ui.utilityBranchLayout): subtrees hang off root and spread left/right horizontally below the main branches.
  *  Tier-1 subtrees are balanced across sides; depth -> x step outward; each leaf path gets its own row. */
@@ -52,7 +53,7 @@ export class TalentPanelView {
   constructor(private sim: () => Sim, private onChange: () => void) {
     this.el = document.createElement('div'); this.el.id = 'talent-panel';
     Object.assign(this.el.style, { position: 'fixed', left: '50%', top: '50%', width: `${W}px`, height: `${H}px`, transform: 'translate(-50%,-50%)', display: 'none', zIndex: '12',
-      userSelect: 'none', color: '#ddd', fontSize: '13px', background: 'radial-gradient(ellipse at 50% 55%, rgba(52,26,12,.97), rgba(10,6,4,.98) 70%)', overflow: 'hidden' });
+      userSelect: 'none', color: '#ddd', fontSize: '13px', background: 'radial-gradient(ellipse at 50% 55%, rgba(52,26,12,.97), rgba(10,6,4,.99) 70%)', backgroundColor: 'rgba(10,6,4,.96)', overflow: 'hidden' });
     document.body.appendChild(this.el);
   }
   setOpen(v: boolean): void { this.open = v; if (!v) { this.pend = {}; this.hover = null; } this.el.style.display = v ? 'block' : 'none'; if (v) this.render(); }
@@ -108,12 +109,12 @@ export class TalentPanelView {
     const btn = 'background:#2a1a10;color:#ffc75a;border:1px solid #8a6a3a;padding:4px 12px;cursor:pointer;font-size:13px';
     this.el.innerHTML = `<style>@keyframes tpPulse{from{opacity:.55}to{opacity:1}}</style>
       <svg width="${W}" height="${H}" style="position:absolute;left:0;top:0;pointer-events:none"><defs><filter id="tglow" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="2.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>${lines}</svg>
-      ${branches.map((br, i) => `<div style="position:absolute;left:${(COLX[i] ?? 0) - 120}px;top:34px;width:240px;text-align:center;color:#ffc75a;font-size:22px;font-weight:bold;letter-spacing:2px;text-shadow:0 0 8px #a50">${br}</div>`).join('')}
+      ${branches.map((br, i) => `<div style="position:absolute;left:${(COLX[i] ?? 0) - 120}px;top:34px;width:240px;text-align:center;${TITLE_CSS}">${br}</div>`).join('')}
       <div style="position:absolute;left:16px;top:10px;right:16px;display:flex;justify-content:space-between;color:#cba">
         <span><b style="color:#ffc75a">天賦樹</b>（T 關閉 · 左鍵規劃 · 右鍵退點/取消）</span>
         <span>等級 ${lvl}−1 = <b>${lp}</b>${b.debug && dp ? ` <span style="color:#8cf">除錯 +${dp}</span>` : ''} · 灰燼碎片 ${b.s.ashShards} · 金幣 ${b.s.gold}
         <button id="tp-reset" style="${btn};margin-left:8px">全部重置（${fullResetCost(lvl) || '免費'}${fullResetCost(lvl) ? ' 金' : ''}）</button></span></div>
-      ${util.size ? `<div style="position:absolute;left:${W / 2 - 60}px;top:${UTIL_ROWS[1]! + 26}px;width:120px;text-align:center;color:#d9b77a;font-size:15px;font-weight:bold;letter-spacing:4px;opacity:.85">通用</div>` : ''}
+      ${util.size ? `<div style="position:absolute;left:${W / 2 - 120}px;top:${Math.max(...[...pos.entries()].filter(([id]) => util.has(id)).map(([, q]) => q.y)) + 34}px;width:240px;text-align:center;${TITLE_CSS}">${[...new Set(nodes.filter((n) => util.has(n.id)).map((n) => n.branch))][0] ?? '通用'}</div>` : ''}
       ${nodes.map(badge).join('')}
       <div style="position:absolute;left:24px;bottom:18px;font-size:17px;color:#e8d6b0">剩餘點數 <b id="tp-points" style="color:#ffd27a">${left}</b>${this.msg ? ` <span style="font-size:13px;color:#f88">${this.msg}</span>` : ''}</div>
       ${anyPend ? `<div id="tp-plan" style="position:absolute;right:12px;bottom:12px;width:310px;flex-wrap:wrap;background:rgba(14,10,8,.92);border:1px solid #6a5232;padding:8px 12px;display:flex;gap:12px;align-items:center">
