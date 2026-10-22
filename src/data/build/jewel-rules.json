@@ -1,23 +1,113 @@
 {
   "_doc": "Machine rules for v4 jewels (text rules live in charmander-talents-v4.json jewels.*). Legendary conversions only touch kind=small nodes inside the socket radius that are allocated; the socket must be allocated too. 'replace' = original effect removed; 'add' = original kept and extra effects added. value = |orig| * mult when abs, else orig * mult.",
   "legendary": {
-    "jw_solar_lens": { "from": ["spAtkPct"], "mode": "replace", "to": [{ "effectType": "sunBurnDmgPct", "mult": 2, "abs": true }] },
-    "jw_dragon_heart": { "from": ["defPct", "defensePct", "damageTakenPct"], "mode": "replace", "to": [{ "effectType": "atkPct", "mult": 1, "abs": true }] },
-    "jw_tailwind": { "from": ["speedPct", "moveSpeedPct"], "mode": "add", "to": [{ "effectType": "projSpeedPct", "mult": 1, "abs": true }, { "effectType": "trailDmgPct", "mult": 1, "abs": true }] }
+    "jw_solar_lens": {
+      "from": [
+        "spAtkPct"
+      ],
+      "mode": "replace",
+      "to": [
+        {
+          "effectType": "sunBurnDmgPct",
+          "mult": 2,
+          "abs": true
+        }
+      ]
+    },
+    "jw_dragon_heart": {
+      "from": [
+        "defPct",
+        "defensePct",
+        "damageTakenPct"
+      ],
+      "mode": "replace",
+      "to": [
+        {
+          "effectType": "atkPct",
+          "mult": 1,
+          "abs": true
+        }
+      ]
+    },
+    "jw_tailwind": {
+      "from": [
+        "speedPct",
+        "moveSpeedPct"
+      ],
+      "mode": "add",
+      "to": [
+        {
+          "effectType": "projSpeedPct",
+          "mult": 1,
+          "abs": true
+        },
+        {
+          "effectType": "trailDmgPct",
+          "mult": 1,
+          "abs": true
+        }
+      ]
+    }
   },
   "normal": {
     "affixPool": [
-      { "effectType": "spAtkPct", "min": 2, "max": 5 },
-      { "effectType": "atkPct", "min": 2, "max": 5 },
-      { "effectType": "fireDmgPct", "min": 2, "max": 4 },
-      { "effectType": "burnDmgPct", "min": 3, "max": 8 },
-      { "effectType": "critPct", "min": 1, "max": 3 },
-      { "effectType": "maxHpPct", "min": 2, "max": 4 },
-      { "effectType": "moveSpeedPct", "min": 1, "max": 3 },
-      { "effectType": "cooldownReductionPct", "min": 1, "max": 3 },
-      { "effectType": "damageTakenPct", "min": -3, "max": -1 },
-      { "effectType": "ppRegenPct", "min": 3, "max": 8 }
+      {
+        "effectType": "spAtkPct",
+        "min": 2,
+        "max": 5
+      },
+      {
+        "effectType": "atkPct",
+        "min": 2,
+        "max": 5
+      },
+      {
+        "effectType": "fireDmgPct",
+        "min": 2,
+        "max": 4
+      },
+      {
+        "effectType": "burnDmgPct",
+        "min": 3,
+        "max": 8
+      },
+      {
+        "effectType": "critPct",
+        "min": 1,
+        "max": 3
+      },
+      {
+        "effectType": "maxHpPct",
+        "min": 2,
+        "max": 4
+      },
+      {
+        "effectType": "moveSpeedPct",
+        "min": 1,
+        "max": 3
+      },
+      {
+        "effectType": "cooldownReductionPct",
+        "min": 1,
+        "max": 3
+      },
+      {
+        "effectType": "damageTakenPct",
+        "min": -3,
+        "max": -1
+      },
+      {
+        "effectType": "ppRegenPct",
+        "min": 3,
+        "max": 8
+      }
     ]
   },
-  "drops": { "chancePerKill": 0.03, "chanceBoss": 0.6, "legendaryShare": 0.15 }
+  "drops": {
+    "chancePerKill": 0.03,
+    "chanceBoss": 0.6,
+    "legendaryShare": 0.15
+  },
+  "inventoryCap": 30,
+  "_docCap": "inventoryCap: max jewels held (socketed ones count). Drops beyond the cap stay on the ground."
 }

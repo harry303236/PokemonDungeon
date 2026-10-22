@@ -20,6 +20,7 @@ import { TapBuffer } from '../input/tap-buffer';
 import { InputMap, SLOT_LABELS } from '../input/input-map';
 import { InventoryView } from '../views/inventory-view';
 import { saveProgress } from '../save-io';
+import { shouldStepSim } from '../../config/flags';
 import { t } from '../../i18n/t';
 
 const T = BALANCE.TILE;
@@ -169,6 +170,7 @@ export class DungeonScene extends Phaser.Scene {
     bus.on('vfx', (e) => { if (this.vfx) this.vfx.fxHint(e); else this.fx.explosion(e.x, e.y, e.r ?? 40); });
     bus.on('build:gain', (e) => { const w = String(e.what);
       if (w.startsWith('locked:')) { const now = this.time.now; if (now - this.lockedSaidAt < 1500) return; this.lockedSaidAt = now; this.say('尚未學會此招式（T 天賦盤 → 招式主幹）'); return; }
+      if (w === 'jewelFull') { this.say(`💎 珠寶已滿（${this.sim.jewelCap()}），新的珠寶留在地上`); return; }
       if (w.startsWith('jewel:')) { this.say(w === 'jewel:normal' ? '💎 獲得 珠寶' : '💎 獲得 傳奇珠寶！'); if (this.talents.open) this.talents.render(); return; }
       this.say(w === 'ash_shard' ? '獲得 灰燼碎片' : '獲得 輔助寶石'); });
     bus.on('damage:dealt', (e) => {
@@ -206,6 +208,7 @@ export class DungeonScene extends Phaser.Scene {
     if (this.uiOpen()) { cmd.forceAttack = false; cmd.moveTo = undefined; cmd.attackTarget = undefined; cmd.slots = cmd.slots.map(() => false); cmd.moveX = 0; cmd.moveY = 0; cmd.dodge = false; }
     const prevFloor = this.sim.floorNo;
     let stepped = false;
+    if (!shouldStepSim(this.uiOpen())) { this.acc = 0; this.taps.consume(); } // paused: world frozen (enemies, damage, cooldowns, statuses)
     while (this.acc >= BALANCE.FIXED_DT) {
       this.capturePrev();
       cmd.taps = stepped ? undefined : this.taps.consume(); // latched taps go to the first tick only
@@ -443,7 +446,8 @@ export class DungeonScene extends Phaser.Scene {
       if (e.dead) continue;
       const v = this.pose(e);
       switch (e.kind) {
-        case 'item': g.fillStyle(RARITY_COLOR[e.item?.rarity ?? 'common'] ?? 0xffffff).fillRect(v.x - 6, v.y - 6, 12, 12); g.lineStyle(1, 0x000000).strokeRect(v.x - 6, v.y - 6, 12, 12); break;
+        case 'item': if (e.jewel) { const c = e.jewel.base === 'normal' ? 0x6fb8ff : 0xffa030; g.fillStyle(c).fillTriangle(v.x, v.y - 9, v.x + 7, v.y, v.x - 7, v.y).fillTriangle(v.x, v.y + 9, v.x + 7, v.y, v.x - 7, v.y); g.lineStyle(1.5, 0xffffff, 0.8).strokeTriangle(v.x, v.y - 9, v.x + 7, v.y, v.x - 7, v.y).strokeTriangle(v.x, v.y + 9, v.x + 7, v.y, v.x - 7, v.y); break; }
+          g.fillStyle(RARITY_COLOR[e.item?.rarity ?? 'common'] ?? 0xffffff).fillRect(v.x - 6, v.y - 6, 12, 12); g.lineStyle(1, 0x000000).strokeRect(v.x - 6, v.y - 6, 12, 12); break;
         case 'zone': g.fillStyle(0xff6020, 0.15).fillCircle(v.x, v.y, e.r); g.lineStyle(2, 0xff9040, 0.5).strokeCircle(v.x, v.y, e.r); break;
         case 'blast': { const k = 1 - (e.life ?? 0) / (e.delay ?? 0.4); g.lineStyle(2, 0xffe060).strokeCircle(v.x, v.y, e.r); g.fillStyle(0xff8020, 0.35).fillCircle(v.x, v.y, e.r * k); break; }
         case 'beam': { if (this.vfx) break; const a = p.rot + e.rot; const len = e.reach ?? e.len ?? 300; const pv = this.pose(p); g.lineStyle(e.width ?? 22, 0xff7020, 0.35).lineBetween(pv.x, pv.y, pv.x + Math.cos(a) * len, pv.y + Math.sin(a) * len);

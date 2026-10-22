@@ -29,7 +29,7 @@ const PANEL = 'background:rgba(14,9,6,.92);border:1px solid #5a4228;border-radiu
 /** Talent system v4 UI controller: launches the board scene and owns the DOM overlay (plan/confirm, trunk, jewels, ascendancy, tooltip, minimap). */
 export class TalentBoardController {
   open = false; private scene?: TalentBoardScene; private root: HTMLDivElement; private plan: BoardPlan = emptyPlan();
-  private hoverId: string | null = null; private hoverJewel: string | null = null; private mx = 0; private my = 0; private picked: string | null = null; private ascOpen = false; private msg = ''; private trunkOpen = false;
+  private hoverId: string | null = null; private hoverJewel: string | null = null; private mx = 0; private my = 0; private picked: string | null = null; private ascOpen = false; private msg = ''; private trunkOpen = false; private confirmDiscard: string | null = null;
   constructor(private host: Phaser.Scene, private sim: () => Sim, private onChange: () => void) {
     this.root = document.createElement('div'); this.root.id = 'talent-board-ui';
     Object.assign(this.root.style, { position: 'fixed', inset: '0', pointerEvents: 'none', zIndex: '12', display: 'none', color: '#ddd', fontSize: '13px', userSelect: 'none', fontFamily: '"Noto Sans CJK TC", sans-serif' });
@@ -45,7 +45,7 @@ export class TalentBoardController {
   setOpen(v: boolean): void {
     if (v === this.open) return; this.open = v; this.root.style.display = v ? 'block' : 'none';
     if (v) { this.host.scene.launch('talent-board', { ctrl: this }); this.host.scene.bringToTop('talent-board'); }
-    else { this.host.scene.stop('talent-board'); this.scene = undefined; this.plan = emptyPlan(); this.picked = null; this.hoverId = null; this.ascOpen = false; this.msg = ''; }
+    else { this.host.scene.stop('talent-board'); this.scene = undefined; this.plan = emptyPlan(); this.picked = null; this.hoverId = null; this.ascOpen = false; this.msg = ''; this.confirmDiscard = null; }
     if (v) this.render();
   }
   toggle(): void { this.setOpen(!this.open); }
@@ -140,16 +140,33 @@ export class TalentBoardController {
       ${this.trunkOpen ? `<div id="tb-trunk" style="position:absolute;left:12px;top:80px;width:214px;${PANEL}"><div style="padding:6px 8px;color:#ffc75a;font-weight:bold;border-bottom:1px solid #5a4228;display:flex;justify-content:space-between">招式主幹 <span style="color:#a98;font-weight:normal;font-size:11px">與盤面共用點數</span><button id="tb-trunk-x" style="${BTN};padding:0 6px">✕</button></div>${trunk}</div>` : ''}
       <canvas id="tb-mini" width="200" height="140" style="position:absolute;right:12px;top:46px;${PANEL};cursor:pointer"></canvas>
       <div style="position:absolute;left:${this.trunkOpen ? 240 : 12}px;right:12px;bottom:10px;display:flex;gap:8px;align-items:center;pointer-events:none">
-        <div style="pointer-events:auto;color:#ffc75a;font-weight:bold;white-space:nowrap">珠寶 ${b.s.board.jewels.length ? `<span style="color:#a98;font-weight:normal;font-size:11px">${b.s.board.jewels.length}</span>` : ''}${this.picked ? '<br><span style="color:#ffe066;font-weight:normal;font-size:11px">點已點亮的珠寶孔鑲嵌</span>' : ''}</div>
+        <div style="pointer-events:auto;color:#ffc75a;font-weight:bold;white-space:nowrap">珠寶 <span id="tb-jwcount" style="font-weight:normal;font-size:11px;color:${b.s.board.jewels.length >= sim.jewelCap() ? '#ff7a6a' : '#a98'}">${b.s.board.jewels.length}/${sim.jewelCap()}${b.s.board.jewels.length >= sim.jewelCap() ? ' 已滿' : ''}</span>${this.picked ? '<br><span style="color:#ffe066;font-weight:normal;font-size:11px">點已點亮的珠寶孔鑲嵌</span>' : ''}</div>
         <div id="tb-jwbar" style="pointer-events:auto;display:flex;flex-wrap:nowrap;gap:8px;overflow-x:auto;overflow-y:hidden;padding-bottom:4px;min-width:0;flex:1">${jewels}</div></div>
       ${this.msg ? `<div style="position:absolute;left:50%;top:44px;transform:translateX(-50%);color:#f88;${PANEL};padding:4px 10px">${esc(this.msg)}</div>` : ''}
       ${planEmpty(this.plan) ? '' : `<div id="tb-plan" style="position:absolute;right:12px;bottom:70px;width:330px;${PANEL};padding:8px 10px">
         <div style="font-size:12px;line-height:1.5"><b style="color:#7fd8ff">規劃中</b> ${sum}<br><span style="color:#cba">花費：灰燼碎片 ${cost.ashShards} · 金幣 ${cost.gold} · 點數 ${this.plan.add.length + Object.values(this.plan.moves).reduce((a, d) => a + Math.max(0, d), 0)}${planRefunds(this.plan) && !this.paid() ? '（Lv16 前退點免費）' : ''}</span></div>
         <div style="margin-top:6px;display:flex;gap:8px;justify-content:flex-end"><button id="tb-ok" style="${BTN};border-color:#c90">確認</button><button id="tb-cancel" style="${BTN}">取消</button></div></div>`}
       ${this.ascOpen ? this.ascHtml(lvl, evo) : ''}
+      ${this.confirmDiscard ? this.confirmHtml(this.confirmDiscard) : ''}
       <div id="tb-tip"></div>`;
     const bar = this.root.querySelector<HTMLElement>('#tb-jwbar'); if (bar) { bar.scrollLeft = keepScroll; bar.addEventListener('wheel', (ev) => { ev.preventDefault(); ev.stopPropagation(); bar.scrollLeft += ev.deltaY + ev.deltaX; }, { passive: false }); }
     this.wire(); this.renderTip(); this.cameraChanged(); this.scene?.redraw();
+  }
+  private confirmHtml(uid: string): string {
+    const j = this.b.s.board.jewels.find((x) => x.uid === uid); if (!j) return '';
+    return `<div style="position:absolute;inset:0;background:rgba(0,0,0,.55);pointer-events:auto"></div>
+      <div id="tb-confirm" style="position:absolute;left:50%;top:42%;transform:translate(-50%,-50%);width:360px;${PANEL};padding:16px 18px;background:rgba(20,10,6,.98);border-color:#c9822a;text-align:center">
+        <img src="${ART}${jewelArt(j.base)}" style="width:48px;height:54px;object-fit:contain" draggable="false">
+        <div style="color:#ffc75a;font-size:16px;font-weight:bold;margin:6px 0">丟棄傳奇珠寶「${esc(jewelName(j))}」？</div>
+        <div style="color:#cbb;font-size:12px;margin-bottom:12px">丟棄後無法復原。</div>
+        <div style="display:flex;gap:10px;justify-content:center"><button id="tb-discard-ok" style="${BTN};border-color:#e05a3a;color:#ff9a7a">丟棄</button><button id="tb-discard-no" style="${BTN}">取消</button></div></div>`;
+  }
+  private discard(uid: string): void {
+    const j = this.b.s.board.jewels.find((x) => x.uid === uid); if (!j) return;
+    if (this.b.socketedUids().has(uid)) { this.msg = '已鑲嵌的珠寶不能直接丟棄，請先從珠寶孔取下（右鍵珠寶孔）'; this.render(); return; }
+    if (isLegendary(j) && this.confirmDiscard !== uid) { this.confirmDiscard = uid; this.hoverJewel = null; this.render(); return; }
+    const r = this.b.discardJewel(uid); this.confirmDiscard = null; if (this.picked === uid) this.picked = null;
+    this.msg = r.ok ? '' : `無法：${r.reason}`; this.after(); this.render();
   }
   private ascHtml(lvl: number, evo: number): string {
     const b = this.b; const s = b.s.board; const tot = ascPointsTotal(BOARD, lvl, evo);
@@ -178,6 +195,8 @@ export class TalentBoardController {
     $('#tb-tab-board')?.addEventListener('click', () => { this.trunkOpen = false; this.render(); });
     $('#tb-tab-trunk')?.addEventListener('click', () => { this.trunkOpen = !this.trunkOpen; this.render(); });
     $('#tb-trunk-x')?.addEventListener('click', () => { this.trunkOpen = false; this.render(); });
+    $('#tb-discard-ok')?.addEventListener('click', () => { if (this.confirmDiscard) this.discard(this.confirmDiscard); });
+    $('#tb-discard-no')?.addEventListener('click', () => { this.confirmDiscard = null; this.render(); });
     $('#tb-fit')?.addEventListener('click', () => this.scene?.resetView());
     $('#tb-asc')?.addEventListener('click', () => { this.ascOpen = !this.ascOpen; this.render(); });
     $('#tb-ascx')?.addEventListener('click', () => { this.ascOpen = false; this.render(); });
@@ -190,6 +209,7 @@ export class TalentBoardController {
     this.root.querySelectorAll<HTMLElement>('[data-jw]').forEach((e) => {
       const uid = e.dataset.jw ?? '';
       e.addEventListener('click', () => { if (e.dataset.dup) { this.msg = '已有同名珠寶鑲嵌'; this.render(); return; } this.picked = this.picked === uid ? null : uid; this.render(); });
+      e.addEventListener('contextmenu', (ev) => { ev.preventDefault(); this.discard(uid); });
       e.addEventListener('mouseenter', (ev) => { this.hoverJewel = uid; this.hoverId = null; this.mx = ev.clientX; this.my = ev.clientY; this.renderTip(); });
       e.addEventListener('mousemove', (ev) => { this.mx = ev.clientX; this.my = ev.clientY; this.placeTip(); });
       e.addEventListener('mouseleave', () => { this.hoverJewel = null; this.renderTip(); });
@@ -248,7 +268,7 @@ export class TalentBoardController {
       const inSock = this.b.socketedUids().has(j.uid);
       if (this.dupBlocked(j)) return head(jewelName(j), '傳奇珠寶 · 轉換型') + line('已有同名珠寶鑲嵌', '#ff7a6a') + line('同種傳奇珠寶全盤只能鑲嵌一顆；先取下已鑲嵌的那顆才能改用這顆', '#a99', 'font-size:12px;margin-top:4px');
       return head(jewelName(j), isLegendary(j) ? '傳奇珠寶 · 轉換型' : '珠寶 · 數值詞綴') + (inSock && !this.jewelLive(j.uid) ? line('未生效：所在珠寶孔沒有連到起點', '#ff7a6a') : '') + (isLegendary(j) ? this.implicitLine(j, inSock ? this.jewelLive(j.uid) : null) + line(esc(LEG.get(j.base)?.rule ?? '')) + line('只轉換範圍內已點亮的小型天賦（每顆節點最多被最近的一顆傳奇珠寶轉換）；轉換後仍套用上限；同種傳奇全盤限一顆', '#a99', 'font-size:11px;margin-top:4px')
-        : (j.affixes ?? []).map((a) => line(esc(fmtVal(a.value, a.effectType)))).join('')) + line(this.picked === j.uid ? '已選取：點擊已點亮的珠寶孔鑲嵌' : '點擊選取後鑲嵌到珠寶孔', '#7fd8ff', 'margin-top:8px');
+        : (j.affixes ?? []).map((a) => line(esc(fmtVal(a.value, a.effectType)))).join('')) + line(this.picked === j.uid ? '已選取：點擊已點亮的珠寶孔鑲嵌' : '點擊選取後鑲嵌到珠寶孔', '#7fd8ff', 'margin-top:8px') + line(inSock ? '已鑲嵌：先取下才能丟棄' : isLegendary(j) ? '右鍵丟棄（需確認）' : '右鍵丟棄', '#9a948c', 'font-size:11px');
     }
     if (this.hoverId?.startsWith('asc:')) {
       const a = BOARD.asc.get(this.hoverId.slice(4))!; const on = s.asc.includes(a.id); const r = canAllocAsc(BOARD, s, a.id, { level: sim.progress.level, evoStage: sim.evoStage + 1 });

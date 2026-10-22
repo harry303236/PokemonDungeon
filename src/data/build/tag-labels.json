@@ -1,0 +1,6 @@
+{
+  "_doc": "Chinese labels for move tags (shown in the skill panel / gem tooltips). tests/tags.test.ts fails if any tag used in data has no label here.",
+  "projectile": "投射物", "fire": "火系", "spell": "法術", "basic": "基本攻擊", "beam": "光束", "channel": "引導",
+  "area": "範圍", "zone": "區域", "duration": "持續", "melee": "近戰", "movement": "位移", "physical": "物理", "nuke": "爆發",
+  "seed": "火種", "ground": "地面", "control": "控制", "aura": "光環", "delayed": "延遲"
+}

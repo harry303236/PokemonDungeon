@@ -85,4 +85,26 @@ await S(() => { const s = window.__pokedungeon.sim(); s.bus.emit('player:levelup
 await p.reload(); await p.waitForTimeout(2500); await p.keyboard.press('c'); await p.waitForTimeout(1200);
 const after = await S(() => JSON.stringify(window.__pokedungeon.sim().build.s.board));
 log('reload board same?', before === after, after.slice(0, 160)); log('after reload', JSON.stringify(await G()));
+
+// ---- director round: continue floor, pause, jewel cap/discard, Chinese tags ----
+log('resume floor (best floor before reload / now)', await S(() => { const s = window.__pokedungeon.sim(); return s.progress.bestFloor + ' / ' + s.floorNo; }));
+const frozen = async () => S(() => { const s = window.__pokedungeon.sim(); return JSON.stringify({ t: s.time, hp: s.player.hp, cd: [...s.cooldowns.values()], mons: [...s.world.query('monster')].slice(0, 5).map(m => [Math.round(m.x), Math.round(m.y), m.hp]) }); });
+await setBoard(true); const f1 = await frozen(); await p.waitForTimeout(1200); const f2 = await frozen(); log('paused while board open', f1 === f2);
+await setBoard(false); await p.waitForTimeout(600); log('resumed after close', (await frozen()) !== f2);
+await p.keyboard.press('Tab'); await p.waitForTimeout(300); const g1 = await frozen(); await p.waitForTimeout(800); log('paused while skill panel open', g1 === (await frozen()));
+log('tags zh', (await S(() => document.body.innerText)).match(/投射物|光束|範圍|近戰/g)?.length ?? 0, /projectile|beam|melee/.test(await S(() => document.body.innerText)) ? 'ENGLISH LEFT' : 'no english tags');
+await p.screenshot({ path: '/workspace/pokedungeon-shots/33-tags-zh.png' }); await p.keyboard.press('Tab');
+await S(() => { const s = window.__pokedungeon.sim(); const b = s.build.s.board; while (b.jewels.length < 29) b.jewels.push(s.rollJewel('normal')); b.jewels.push(s.rollJewel('jw_dragon_heart')); s.giveJewel(s.rollJewel('jw_solar_lens'), s.player.x + 200, s.player.y); });
+await p.waitForTimeout(300); log('ground jewels', await S(() => [...window.__pokedungeon.sim().world.query('item')].filter(e => e.jewel).length));
+await setBoard(true); log('jewel count', await p.textContent('#tb-jwcount'));
+const heartUid = await S(() => window.__pokedungeon.sim().build.s.board.jewels.find(j => j.base === 'jw_dragon_heart').uid);
+await p.click(`[data-jw="${heartUid}"]`, { button: 'right' }); await p.waitForTimeout(200); log('confirm shown', !!(await p.$('#tb-confirm')));
+await p.screenshot({ path: '/workspace/pokedungeon-shots/33-jewel-discard-confirm.png' });
+await p.click('#tb-discard-no'); log('cancel keeps', await S((u) => window.__pokedungeon.sim().build.s.board.jewels.some(j => j.uid === u), heartUid));
+await p.click(`[data-jw="${heartUid}"]`, { button: 'right' }); await p.click('#tb-discard-ok'); await p.waitForTimeout(150);
+log('discarded', !(await S((u) => window.__pokedungeon.sim().build.s.board.jewels.some(j => j.uid === u), heartUid)), await p.textContent('#tb-jwcount'));
+const n0 = await p.$$('[data-jw]'); await n0[n0.length - 1].click({ button: 'right' }); await p.waitForTimeout(150); log('normal discarded without confirm', !(await p.$('#tb-confirm')), await p.textContent('#tb-jwcount'));
+await S(() => { const s = window.__pokedungeon.sim(); const b = s.build.s.board; while (b.jewels.length < 30) b.jewels.push(s.rollJewel('normal')); window.__pokedungeon.game.scene.getScene('talent-board').ctrl.render(); });
+await p.mouse.move(640, 300); await p.waitForTimeout(150); await p.screenshot({ path: '/workspace/pokedungeon-shots/33-jewel-cap.png' });
+await setBoard(false);
 log('ERRS', errs.slice(0, 30)); await b.close();

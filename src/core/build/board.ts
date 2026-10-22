@@ -49,7 +49,7 @@ export const loadBoard = (raw: BoardRaw): Board => new Board(raw);
 export const BOARD = loadBoard(RAW as unknown as BoardRaw);
 export const JEWEL_RULES = RULES as unknown as {
   legendary: Record<string, { from: string[]; mode: 'replace' | 'add'; to: { effectType: string; mult: number; abs?: boolean }[] }>;
-  normal: { affixPool: { effectType: string; min: number; max: number }[] }; drops: { chancePerKill: number; chanceBoss: number; legendaryShare: number };
+  normal: { affixPool: { effectType: string; min: number; max: number }[] }; drops: { chancePerKill: number; chanceBoss: number; legendaryShare: number }; inventoryCap: number;
 };
 export const LINE = 'charmander';
 export const emptyBoardState = (b: Board = BOARD): BoardState => ({ nodes: [], moves: { [b.freeMove]: 1 }, asc: [], jewels: [], sockets: {} });

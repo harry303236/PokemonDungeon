@@ -36,6 +36,8 @@ export const newProgress = (seed: number): Progress => ({ level: 5, xp: 0, inven
 
 export const BASIC = BASIC_MOVE;
 export const MAX_FLOOR = 5;
+/** Floor a Continue resumes on: deepest floor reached as of the save (its entrance), clamped; old/corrupt saves fall back to 1. */
+export const resumeFloor = (p: Pick<Progress, 'bestFloor'>): number => { const f = Math.floor(Number(p.bestFloor)); return Number.isFinite(f) ? Math.min(MAX_FLOOR, Math.max(1, f)) : 1; };
 export const POTION_PER_FLOOR = 3; // TUNE
 export const POTION_HEAL = 0.35; // TUNE
 export const POTION_CD = 4; // TUNE
@@ -90,7 +92,8 @@ export class Sim {
     progress.build = ensureBuild(progress.build);
     this.build = new Build(progress.build, () => ({ level: this.progress.level, evoStage1: this.evoStage + 1 }));
     this.bon = this.build.bonuses();
-    this.loadFloor(1);
+    this.progress.bestFloor = resumeFloor(progress);
+    this.loadFloor(this.progress.bestFloor);
   }
 
   /** 0 = charmander, 1 = charmeleon, 2 = charizard. */
@@ -174,12 +177,22 @@ export class Sim {
     for (let i = 0; i < n && pool.length; i++) { const a = pool.splice(this.rng.int(0, pool.length - 1), 1)[0]!; affixes.push({ effectType: a.effectType, value: this.rng.int(Math.min(a.min, a.max), Math.max(a.min, a.max)) }); }
     return { uid, base: 'normal', affixes };
   }
-  private maybeDropJewel(boss: boolean): void {
+  jewelCap(): number { return JEWEL_RULES.inventoryCap; }
+  jewelsFull(): boolean { return this.build.s.board.jewels.length >= this.jewelCap(); }
+  private jewelFullSaidAt = -99;
+  /** Add a jewel to the inventory, or leave it on the ground at (x, y) when the inventory is full (cap from jewel-rules.json). */
+  giveJewel(j: JewelItem, x = this.player.x, y = this.player.y): boolean {
+    if (!this.jewelsFull()) { this.build.s.board.jewels.push(j); this.bus.emit('build:gain', { what: `jewel:${j.base}` }); return true; }
+    this.world.spawn({ kind: 'item', x: x + this.rng.range(-12, 12), y: y + this.rng.range(-12, 12), r: 10, jewel: j });
+    this.sayJewelFull(); return false;
+  }
+  private sayJewelFull(): void { if (this.time - this.jewelFullSaidAt < 3) return; this.jewelFullSaidAt = this.time; this.bus.emit('build:gain', { what: 'jewelFull' }); }
+  private maybeDropJewel(boss: boolean, x?: number, y?: number): void {
     if (this.rng.next() >= (boss ? JEWEL_RULES.drops.chanceBoss : JEWEL_RULES.drops.chancePerKill)) return;
-    const j = this.rollJewel(); this.build.s.board.jewels.push(j); this.bus.emit('build:gain', { what: `jewel:${j.base}` });
+    this.giveJewel(this.rollJewel(), x, y);
   }
   /** Debug: one of each legendary jewel + two normal jewels. */
-  debugGrantJewels(): void { for (const id of Object.keys(JEWEL_RULES.legendary)) this.build.s.board.jewels.push(this.rollJewel(id)); for (let i = 0; i < 2; i++) this.build.s.board.jewels.push(this.rollJewel('normal')); }
+  debugGrantJewels(): void { for (const id of Object.keys(JEWEL_RULES.legendary)) this.giveJewel(this.rollJewel(id)); for (let i = 0; i < 2; i++) this.giveJewel(this.rollJewel('normal')); }
   /** Debug: talent points + one of each gem + respec materials. */
   debugGrantBuild(): void {
     this.debugSun(0); const b = this.build.s; b.bonusPoints += 5; b.gems.push(...Object.keys(GEMS)); b.ashShards += 3; b.gold += 2000; }
@@ -629,7 +642,7 @@ export class Sim {
     // build currencies: gold always, ash shard / support gem sometimes (TUNE)
     const b = this.build.s; b.gold += Math.round((t.level ?? 1) * (t.isBoss ? 20 : 2));
     if (this.rng.next() < (t.isBoss ? 1 : 0.06)) { b.ashShards++; this.bus.emit('build:gain', { what: 'ash_shard' }); }
-    this.maybeDropJewel(!!t.isBoss);
+    this.maybeDropJewel(!!t.isBoss, t.x, t.y);
     if (this.rng.next() < (t.isBoss ? 1 : 0.04)) { const ids = Object.keys(GEMS); const g = ids[this.rng.int(0, ids.length - 1)]; if (g) { b.gems.push(g); this.bus.emit('build:gain', { what: g }); } }
     if (this.bon.burnSpread > 0 && t.burn) for (const o of this.hash.near(t.x, t.y, 90)) if (!o.dead && o !== t) this.applyBurn(o, killer);
     const drops = t.isBoss ? 3 : this.rng.next() < BALANCE.dropChance ? 1 : 0;
@@ -807,6 +820,10 @@ export class Sim {
   private lootStep(): void {
     const p = this.player;
     for (const it of this.world.query('item')) {
+      if (it.jewel && Math.hypot(it.x - p.x, it.y - p.y) <= BALANCE.pickupRadius + p.r) {
+        if (this.jewelsFull()) { this.sayJewelFull(); continue; }
+        this.build.s.board.jewels.push(it.jewel); it.dead = true; this.bus.emit('build:gain', { what: `jewel:${it.jewel.base}` }); continue;
+      }
       if (!it.item || Math.hypot(it.x - p.x, it.y - p.y) > BALANCE.pickupRadius + p.r) continue;
       if (this.progress.inventory.length >= 60) continue;
       this.progress.inventory.push(it.item); it.dead = true;

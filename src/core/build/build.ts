@@ -75,6 +75,9 @@ export function triggerMatches(t: ReactionRule['trigger'], tags: Set<string>, mo
 }
 export const variantVfx = (variant: string | null | undefined): string | undefined => (variant ? BIND.variants[variant]?.vfx : undefined);
 
+import TAG_LABELS from '../../data/build/tag-labels.json';
+/** Chinese label for a move tag (data: tag-labels.json); raw tag if unknown. */
+export const tagLabel = (t: string): string => (TAG_LABELS as Record<string, string>)[t] ?? t;
 /** Tags for a move: data, else derived from shape so new moves work without a tag entry. */
 export function moveTags(id: string, shape?: string, type?: string): string[] {
   const d = MOVE_TAGS[id]; if (d) return d.tags;
@@ -148,6 +151,12 @@ export class Build {
     this.s.board.sockets[sock] = uid; return { ok: true };
   }
   unsocketJewel(sock: string): { ok: boolean; reason?: string } { if (!this.s.board.sockets[sock]) return { ok: false, reason: 'empty' }; delete this.s.board.sockets[sock]; return { ok: true }; }
+  /** Discard a jewel. Socketed jewels can't be discarded directly (unsocket first) so an active build piece is never lost by accident. */
+  discardJewel(uid: string): { ok: boolean; reason?: string } {
+    const i = this.s.board.jewels.findIndex((j) => j.uid === uid); if (i < 0) return { ok: false, reason: 'noJewel' };
+    if (this.socketedUids().has(uid)) return { ok: false, reason: 'socketed' };
+    this.s.board.jewels.splice(i, 1); return { ok: true };
+  }
   socketedUids(): Set<string> { return new Set(Object.values(this.s.board.sockets)); }
   allocate(id: string): { ok: boolean; reason?: string } {
     const r = canAllocate(TALENTS, this.s.talents, id, this.tctx()); if (!r.ok) return r;

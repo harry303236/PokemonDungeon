@@ -25,6 +25,7 @@ export interface Entity {
   dash?: { t: number; dirX: number; dirY: number; speed: number; hit: boolean; moveId?: string; /** 烈焰之翼 flight dodge */ flight?: boolean };
   // loot
   item?: Item;
+  /** dropped jewel waiting on the ground (jewel inventory was full) */ jewel?: import('../build/board').JewelItem;
 }
 export interface MoveMods { powerBonus: number; leech: number; kindling: boolean; /** pipeline result for this cast */ spec?: MoveSpec; /** reaction bursts don't re-trigger reactions */ noReact?: boolean; /** damage from a delayed-blast mark (doesn't re-mark/seed) */ fromMark?: boolean; /** 龍氣 full: guaranteed crit for this cast */ forceCrit?: boolean }
 

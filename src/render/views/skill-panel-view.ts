@@ -4,7 +4,7 @@ import { move as moveData } from '../../data/registry';
 import { moveCooldown, energyCost } from '../../core/moves/cooldown';
 import { SLOT_LABELS } from '../input/input-map';
 import { t } from '../../i18n/t';
-import { GEMS, SKILL_UPGRADES, moveTags } from '../../core/build/build';
+import { GEMS, SKILL_UPGRADES, moveTags, tagLabel } from '../../core/build/build';
 
 const gemIcon = (g: string, px: number): string => { const ic = GEMS[g]?.icon; return ic ? `<img src="assets/hud/gems/${ic}.png" width="${px}" height="${px}" draggable="false" style="vertical-align:middle;pointer-events:none" onerror="this.style.display='none'">` : (GEMS[g]?.name ?? '?').slice(0, 2); };
 const SHAPE_COLOR: Record<string, string> = { projectile: '#ff9a3c', beam: '#ff5a1f', zone: '#e8462a', 'aoe-target': '#ffcc33', dash: '#d0302a' };
@@ -42,8 +42,8 @@ export class SkillPanelView {
     const upHtml = (id: string): string => (SKILL_UPGRADES[id] ?? []).map((g) => `<div style="display:flex;gap:2px;justify-content:center;margin-top:3px">${g.options.map((o) => {
       const on = b.s.upgrades[id]?.[g.group] === o.id; const lock = g.group === 'variant' && !b.canChooseVariant(id);
       return `<button ${lock ? 'disabled ' : ''}data-up="${id}|${g.group}|${o.id}" title="${o.desc}${o.rules.length ? '\n規則：' + o.rules.join('；') : ''}${o.stub ? '\n(未實裝)' : ''}${lock ? '\n（天賦盤招式主幹升到第 3 級才能選）' : ''}" style="font-size:10px;padding:1px 3px;${lock ? 'opacity:.4;' : ''}background:${on ? '#6a3a14' : '#221a14'};color:${on ? '#fc6' : '#aaa'};border:1px solid #664">${o.name}</button>`; }).join('')}</div>`).join('');
-    const poolHtml = KNOWN_MOVES.map((id) => `<div style="text-align:center;width:90px">${this.icon(id, `data-pool="${id}" data-move="${id}"`)}<small style="color:#999">${slots.includes(id) ? SLOT_LABELS[slots.indexOf(id)] : '—'}</small>${sockHtml(id)}${upHtml(id)}<div style="color:#776;font-size:10px">${moveTags(id).join(' ')}</div></div>`).join('');
-    const bagHtml = b.s.gems.length ? b.s.gems.map((g, i) => `<div data-gem="${g}" data-gi="${i}" draggable="true" title="${GEMS[g]?.desc ?? ''}（適用：${(GEMS[g]?.tagsAny ?? []).join('/')}）" style="cursor:grab;padding:2px 7px 2px 2px;border:1px solid #47a;border-radius:12px;background:#123;color:#bdf;display:flex;align-items:center;gap:4px">${gemIcon(g, 20)}${GEMS[g]?.name ?? g}${GEMS[g]?.stub ? '<i style="color:#a66">(未實裝)</i>' : ''}</div>`).join('') : '<span style="color:#666">（空。K 鍵除錯取得寶石）</span>';
+    const poolHtml = KNOWN_MOVES.map((id) => `<div style="text-align:center;width:90px">${this.icon(id, `data-pool="${id}" data-move="${id}"`)}<small style="color:#999">${slots.includes(id) ? SLOT_LABELS[slots.indexOf(id)] : '—'}</small>${sockHtml(id)}${upHtml(id)}<div style="color:#776;font-size:10px">${moveTags(id).map(tagLabel).join('・')}</div></div>`).join('');
+    const bagHtml = b.s.gems.length ? b.s.gems.map((g, i) => `<div data-gem="${g}" data-gi="${i}" draggable="true" title="${GEMS[g]?.desc ?? ''}（適用：${(GEMS[g]?.tagsAny ?? []).map(tagLabel).join('/') || '全部'}）" style="cursor:grab;padding:2px 7px 2px 2px;border:1px solid #47a;border-radius:12px;background:#123;color:#bdf;display:flex;align-items:center;gap:4px">${gemIcon(g, 20)}${GEMS[g]?.name ?? g}${GEMS[g]?.stub ? '<i style="color:#a66">(未實裝)</i>' : ''}</div>`).join('') : '<span style="color:#666">（空。K 鍵除錯取得寶石）</span>';
     this.el.innerHTML = `<div style="color:#fc6;margin-bottom:6px">${t('skills.title')}</div><div style="display:flex;gap:10px">${slotHtml}</div>
       <div style="margin:10px 0 6px;color:#aaa">${t('skills.pool')}</div><div style="display:flex;gap:10px">${poolHtml}</div>
       <div style="margin:10px 0 4px;color:#aaa">輔助寶石背包（拖到招式下方插槽；插槽數依進化階段 1/2/3，寶石跟著招式走）${this.gemMsg ? ` <span style="color:#f88">${this.gemMsg}</span>` : ''}</div><div style="display:flex;gap:6px;flex-wrap:wrap">${bagHtml}</div>

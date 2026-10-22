@@ -28,6 +28,7 @@ export class TalentBoardScene extends Phaser.Scene {
     for (const n of BOARD.raw.nodes) { const p = (ICONS as Record<string, string | null>)[n.id]; if (p && !this.textures.exists(`ti-${n.id}`)) this.load.image(`ti-${n.id}`, ART + p); }
   }
   create(): void {
+    this.labels = []; this.objs.clear(); this.drag = null; // scene instance is reused across launches: drop references to the previous run's objects
     const cam = this.cameras.main; cam.setBackgroundColor('#0a0605'); // opaque: hide the dungeon/HUD underneath
     this.add.rectangle(0, 0, 10, 10, 0x0c0705, 0.985).setOrigin(0).setScrollFactor(0).setDepth(-10).setName('bg');
     this.scale.on('resize', this.fitBg, this); this.fitBg();
