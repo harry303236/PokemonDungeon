@@ -1,0 +1,1355 @@
+{
+  "meta": {
+    "line": "charmander",
+    "version": 4,
+    "pointsPerLevel": 1,
+    "maxLevel": 50,
+    "totalPoints": 49,
+    "pointPool": "招式主幹與被動盤共用",
+    "ascendancyPoints": {
+      "36": 1,
+      "42": 1,
+      "48": 1
+    },
+    "boardRule": "新點的節點必須與已點節點以 edges 相連；洗點時需通過起點可達性檢查",
+    "saveFormat": "只存節點 id",
+    "respec": {
+      "freeBeforeLevel": 16,
+      "perNode": "item:ash_shard x1",
+      "full": "gold, scales with level"
+    },
+    "mechanics": {
+      "_doc": "tuning for talent effects (seconds)",
+      "comboResetSec": 2,
+      "trailLifeSec": 2,
+      "trailPerEnemyIcdSec": 0.5,
+      "cooldownReductionCapPct": 40,
+      "moveSpeedCapPct": 50,
+      "damageTakenReductionCapPct": 40,
+      "onKillCdRefundMaxPerFrame": 1,
+      "onKillCdRefundMaxSecPerSec": 1.5
+    },
+    "moveUnlockNote": "招式解鎖順序參考 PokéAPI，等級壓縮成遊戲節奏（原作噴射火焰 Lv24、火焰旋渦 Lv32、閃焰衝鋒/大字爆炎為招式學習器）"
+  },
+  "moveTrunk": [
+    {
+      "move": "ember",
+      "learnLevel": 1,
+      "maxRank": 3,
+      "enhance": "多一發",
+      "variantAtRank": 3,
+      "note": "基本攻擊"
+    },
+    {
+      "move": "flame_charge",
+      "learnLevel": 4,
+      "maxRank": 3,
+      "enhance": "衝刺距離 +25%",
+      "variantAtRank": 3
+    },
+    {
+      "move": "flamethrower",
+      "learnLevel": 10,
+      "maxRank": 3,
+      "enhance": "持續時間 +20%",
+      "variantAtRank": 3
+    },
+    {
+      "move": "fire_spin",
+      "learnLevel": 16,
+      "maxRank": 3,
+      "enhance": "範圍 +20%",
+      "variantAtRank": 3
+    },
+    {
+      "move": "fire_blast",
+      "learnLevel": 24,
+      "maxRank": 3,
+      "enhance": "冷卻 -15%",
+      "variantAtRank": 3
+    }
+  ],
+  "nodes": [
+    {
+      "id": "start_charmander",
+      "kind": "start",
+      "name": "火種",
+      "effectType": "none",
+      "value": 0,
+      "pos": {
+        "x": 0,
+        "y": 0
+      },
+      "startFor": "charmander"
+    },
+    {
+      "id": "sun_a1",
+      "kind": "small",
+      "name": "灼熱之心",
+      "effectType": "spAtkPct",
+      "value": 4,
+      "pos": {
+        "x": -85,
+        "y": -31
+      },
+      "branch": "烈陽焚天",
+      "region": "sun"
+    },
+    {
+      "id": "sun_a2",
+      "kind": "small",
+      "name": "引燃",
+      "effectType": "burnChancePct",
+      "value": 5,
+      "pos": {
+        "x": -169,
+        "y": -62
+      },
+      "branch": "烈陽焚天",
+      "region": "sun"
+    },
+    {
+      "id": "sun_a3",
+      "kind": "small",
+      "name": "餘燼",
+      "effectType": "burnDmgPct",
+      "value": 8,
+      "pos": {
+        "x": -254,
+        "y": -92
+      },
+      "branch": "烈陽焚天",
+      "region": "sun"
+    },
+    {
+      "id": "sun_N1",
+      "kind": "notable",
+      "name": "擴散火舌：噴射火焰變寬",
+      "effectType": "flamethrowerWidth",
+      "value": 0.3,
+      "pos": {
+        "x": -338,
+        "y": -123
+      },
+      "branch": "烈陽焚天",
+      "region": "sun"
+    },
+    {
+      "id": "sun_b1",
+      "kind": "small",
+      "name": "晴空延長",
+      "effectType": "sunDurationPct",
+      "value": 15,
+      "pos": {
+        "x": -437,
+        "y": -85
+      },
+      "branch": "烈陽焚天",
+      "region": "sun"
+    },
+    {
+      "id": "sun_b2",
+      "kind": "small",
+      "name": "烈陽之眼",
+      "effectType": "fireCritPct",
+      "value": 4,
+      "pos": {
+        "x": -537,
+        "y": -46
+      },
+      "branch": "烈陽焚天",
+      "region": "sun"
+    },
+    {
+      "id": "sun_N2",
+      "kind": "notable",
+      "name": "燎原：燃燒的敵人死亡時擴散",
+      "effectType": "burnSpread",
+      "value": 1,
+      "pos": {
+        "x": -595,
+        "y": -4
+      },
+      "branch": "烈陽焚天",
+      "region": "sun"
+    },
+    {
+      "id": "sun_c1",
+      "kind": "small",
+      "name": "焚盡",
+      "effectType": "burnConsumeMultPct",
+      "value": 10,
+      "pos": {
+        "x": -651,
+        "y": -24
+      },
+      "branch": "烈陽焚天",
+      "region": "sun"
+    },
+    {
+      "id": "sun_c2",
+      "kind": "small",
+      "name": "火之意志",
+      "effectType": "fireDmgPct",
+      "value": 4,
+      "pos": {
+        "x": -707,
+        "y": -45
+      },
+      "branch": "烈陽焚天",
+      "region": "sun"
+    },
+    {
+      "id": "sun_c3",
+      "kind": "small",
+      "name": "熱浪",
+      "effectType": "areaPct",
+      "value": 5,
+      "pos": {
+        "x": -764,
+        "y": -65
+      },
+      "branch": "烈陽焚天",
+      "region": "sun"
+    },
+    {
+      "id": "sun_c4",
+      "kind": "small",
+      "name": "灼熱血脈",
+      "effectType": "spAtkPct",
+      "value": 3,
+      "pos": {
+        "x": -820,
+        "y": -86
+      },
+      "branch": "烈陽焚天",
+      "region": "sun"
+    },
+    {
+      "id": "sun_c5",
+      "kind": "small",
+      "name": "烈陽庇護",
+      "effectType": "burnDmgPct",
+      "value": 6,
+      "pos": {
+        "x": -877,
+        "y": -106
+      },
+      "branch": "烈陽焚天",
+      "region": "sun"
+    },
+    {
+      "id": "sun_KS",
+      "kind": "keystone",
+      "name": "太陽之力：晴天特攻×1.5，每秒損失1%最大HP；擊殺回復3%HP",
+      "effectType": "keystone",
+      "value": "ks_solarPower",
+      "pos": {
+        "x": -906,
+        "y": -202
+      },
+      "drawback": "每秒損失 1% 最大 HP（晴天時）",
+      "exclusiveGroup": "keystone",
+      "requires": [
+        "sun_N3"
+      ],
+      "branch": "烈陽焚天",
+      "region": "sun"
+    },
+    {
+      "id": "sun_d1",
+      "kind": "small",
+      "name": "焰心",
+      "effectType": "spAtkPct",
+      "value": 3,
+      "pos": {
+        "x": -390,
+        "y": -216
+      },
+      "branch": "烈陽焚天",
+      "region": "sun"
+    },
+    {
+      "id": "sun_d2",
+      "kind": "small",
+      "name": "炎流",
+      "effectType": "fireDmgPct",
+      "value": 3,
+      "pos": {
+        "x": -441,
+        "y": -309
+      },
+      "branch": "烈陽焚天",
+      "region": "sun"
+    },
+    {
+      "id": "sun_N3",
+      "kind": "notable",
+      "name": "日冕：晴天時燃燒傷害 +25%",
+      "effectType": "sunBurnDmgPct",
+      "value": 25,
+      "pos": {
+        "x": -458,
+        "y": -379
+      },
+      "branch": "烈陽焚天",
+      "region": "sun"
+    },
+    {
+      "id": "sun_jewel",
+      "kind": "jewel",
+      "name": "珠寶孔",
+      "effectType": "jewelSocket",
+      "value": null,
+      "pos": {
+        "x": -531,
+        "y": -470
+      },
+      "radius": 220,
+      "branch": "烈陽焚天",
+      "region": "sun"
+    },
+    {
+      "id": "claw_a1",
+      "kind": "small",
+      "name": "利爪",
+      "effectType": "atkPct",
+      "value": 4,
+      "pos": {
+        "x": 0,
+        "y": -90
+      },
+      "branch": "龍爪狂襲",
+      "region": "claw"
+    },
+    {
+      "id": "claw_a2",
+      "kind": "small",
+      "name": "嗜焰",
+      "effectType": "meleeLifestealPct",
+      "value": 1,
+      "pos": {
+        "x": 0,
+        "y": -180
+      },
+      "branch": "龍爪狂襲",
+      "region": "claw"
+    },
+    {
+      "id": "claw_a3",
+      "kind": "small",
+      "name": "弱點",
+      "effectType": "critPct",
+      "value": 3,
+      "pos": {
+        "x": 0,
+        "y": -270
+      },
+      "branch": "龍爪狂襲",
+      "region": "claw"
+    },
+    {
+      "id": "claw_N1",
+      "kind": "notable",
+      "name": "閃焰衝鋒多一段判定",
+      "effectType": "flameChargeHits",
+      "value": 1,
+      "pos": {
+        "x": 0,
+        "y": -360
+      },
+      "branch": "龍爪狂襲",
+      "region": "claw"
+    },
+    {
+      "id": "claw_b1",
+      "kind": "small",
+      "name": "鱗甲",
+      "effectType": "defPct",
+      "value": 4,
+      "pos": {
+        "x": -70,
+        "y": -440
+      },
+      "branch": "龍爪狂襲",
+      "region": "claw"
+    },
+    {
+      "id": "claw_b2",
+      "kind": "small",
+      "name": "撕裂",
+      "effectType": "critDmgPct",
+      "value": 8,
+      "pos": {
+        "x": -140,
+        "y": -520
+      },
+      "branch": "龍爪狂襲",
+      "region": "claw"
+    },
+    {
+      "id": "claw_N2",
+      "kind": "notable",
+      "name": "連擊：連續命中疊加傷害",
+      "effectType": "comboStack",
+      "value": 1,
+      "pos": {
+        "x": -200,
+        "y": -560
+      },
+      "branch": "龍爪狂襲",
+      "region": "claw"
+    },
+    {
+      "id": "claw_c1",
+      "kind": "small",
+      "name": "震懾",
+      "effectType": "stunDurPct",
+      "value": 10,
+      "pos": {
+        "x": -200,
+        "y": -620
+      },
+      "branch": "龍爪狂襲",
+      "region": "claw"
+    },
+    {
+      "id": "claw_c2",
+      "kind": "small",
+      "name": "鋼爪",
+      "effectType": "atkPct",
+      "value": 3,
+      "pos": {
+        "x": -200,
+        "y": -680
+      },
+      "branch": "龍爪狂襲",
+      "region": "claw"
+    },
+    {
+      "id": "claw_c3",
+      "kind": "small",
+      "name": "龍鱗",
+      "effectType": "maxHpPct",
+      "value": 3,
+      "pos": {
+        "x": -200,
+        "y": -740
+      },
+      "branch": "龍爪狂襲",
+      "region": "claw"
+    },
+    {
+      "id": "claw_c4",
+      "kind": "small",
+      "name": "狂暴",
+      "effectType": "attackSpeedPct",
+      "value": 4,
+      "pos": {
+        "x": -200,
+        "y": -800
+      },
+      "branch": "龍爪狂襲",
+      "region": "claw"
+    },
+    {
+      "id": "claw_c5",
+      "kind": "small",
+      "name": "血性",
+      "effectType": "critPct",
+      "value": 2,
+      "pos": {
+        "x": -200,
+        "y": -860
+      },
+      "branch": "龍爪狂襲",
+      "region": "claw"
+    },
+    {
+      "id": "claw_KS",
+      "kind": "keystone",
+      "name": "猛火龍：每損失10%HP，火系傷害+6%（最多+45%）",
+      "effectType": "keystone",
+      "value": "ks_blaze",
+      "pos": {
+        "x": -120,
+        "y": -920
+      },
+      "drawback": "加成要靠失去生命，血量低時很危險",
+      "exclusiveGroup": "keystone",
+      "requires": [
+        "claw_N3"
+      ],
+      "branch": "龍爪狂襲",
+      "region": "claw"
+    },
+    {
+      "id": "claw_d1",
+      "kind": "small",
+      "name": "硬爪",
+      "effectType": "atkPct",
+      "value": 3,
+      "pos": {
+        "x": 70,
+        "y": -440
+      },
+      "branch": "龍爪狂襲",
+      "region": "claw"
+    },
+    {
+      "id": "claw_d2",
+      "kind": "small",
+      "name": "龍息",
+      "effectType": "fireDmgPct",
+      "value": 3,
+      "pos": {
+        "x": 140,
+        "y": -520
+      },
+      "branch": "龍爪狂襲",
+      "region": "claw"
+    },
+    {
+      "id": "claw_N3",
+      "kind": "notable",
+      "name": "逆鱗：被擊中後 3 秒內攻擊 +15%",
+      "effectType": "onHitTakenAtkPct",
+      "value": {
+        "pct": 15,
+        "sec": 3
+      },
+      "pos": {
+        "x": 200,
+        "y": -560
+      },
+      "branch": "龍爪狂襲",
+      "region": "claw"
+    },
+    {
+      "id": "claw_jewel",
+      "kind": "jewel",
+      "name": "珠寶孔",
+      "effectType": "jewelSocket",
+      "value": null,
+      "pos": {
+        "x": 260,
+        "y": -660
+      },
+      "radius": 220,
+      "branch": "龍爪狂襲",
+      "region": "claw"
+    },
+    {
+      "id": "wing_a1",
+      "kind": "small",
+      "name": "疾風",
+      "effectType": "speedPct",
+      "value": 3,
+      "pos": {
+        "x": 85,
+        "y": -31
+      },
+      "branch": "灼燒之翼",
+      "region": "wing"
+    },
+    {
+      "id": "wing_a2",
+      "kind": "small",
+      "name": "翻滾",
+      "effectType": "dodgeCdPct",
+      "value": -6,
+      "pos": {
+        "x": 169,
+        "y": -62
+      },
+      "branch": "灼燒之翼",
+      "region": "wing"
+    },
+    {
+      "id": "wing_a3",
+      "kind": "small",
+      "name": "殘影",
+      "effectType": "evasionPct",
+      "value": 3,
+      "pos": {
+        "x": 254,
+        "y": -92
+      },
+      "branch": "灼燒之翼",
+      "region": "wing"
+    },
+    {
+      "id": "wing_N1",
+      "kind": "notable",
+      "name": "可邊移動邊施放",
+      "effectType": "moveCast",
+      "value": 1,
+      "pos": {
+        "x": 338,
+        "y": -123
+      },
+      "branch": "灼燒之翼",
+      "region": "wing"
+    },
+    {
+      "id": "wing_b1",
+      "kind": "small",
+      "name": "氣流",
+      "effectType": "ppRegenPct",
+      "value": 6,
+      "pos": {
+        "x": 390,
+        "y": -216
+      },
+      "branch": "灼燒之翼",
+      "region": "wing"
+    },
+    {
+      "id": "wing_b2",
+      "kind": "small",
+      "name": "順風",
+      "effectType": "projSpeedPct",
+      "value": 8,
+      "pos": {
+        "x": 441,
+        "y": -309
+      },
+      "branch": "灼燒之翼",
+      "region": "wing"
+    },
+    {
+      "id": "wing_N2",
+      "kind": "notable",
+      "name": "移動留下火尾",
+      "effectType": "trailIgnite",
+      "value": 1,
+      "pos": {
+        "x": 458,
+        "y": -379
+      },
+      "branch": "灼燒之翼",
+      "region": "wing"
+    },
+    {
+      "id": "wing_c1",
+      "kind": "small",
+      "name": "熾尾",
+      "effectType": "trailDmgPct",
+      "value": 10,
+      "pos": {
+        "x": 514,
+        "y": -400
+      },
+      "branch": "灼燒之翼",
+      "region": "wing"
+    },
+    {
+      "id": "wing_c2",
+      "kind": "small",
+      "name": "翼展",
+      "effectType": "moveSpeedPct",
+      "value": 2,
+      "pos": {
+        "x": 571,
+        "y": -421
+      },
+      "branch": "灼燒之翼",
+      "region": "wing"
+    },
+    {
+      "id": "wing_c3",
+      "kind": "small",
+      "name": "輕羽",
+      "effectType": "dodgeCooldownPct",
+      "value": -4,
+      "pos": {
+        "x": 627,
+        "y": -441
+      },
+      "branch": "灼燒之翼",
+      "region": "wing"
+    },
+    {
+      "id": "wing_c4",
+      "kind": "small",
+      "name": "熾翼",
+      "effectType": "trailDmgPct",
+      "value": 6,
+      "pos": {
+        "x": 683,
+        "y": -462
+      },
+      "branch": "灼燒之翼",
+      "region": "wing"
+    },
+    {
+      "id": "wing_c5",
+      "kind": "small",
+      "name": "乘風",
+      "effectType": "projSpeedPct",
+      "value": 6,
+      "pos": {
+        "x": 740,
+        "y": -482
+      },
+      "branch": "灼燒之翼",
+      "region": "wing"
+    },
+    {
+      "id": "wing_KS",
+      "kind": "keystone",
+      "name": "晴空滑翔：閃避會留下3秒火焰路徑",
+      "effectType": "keystone",
+      "value": "ks_skyGlide",
+      "pos": {
+        "x": 823,
+        "y": -427
+      },
+      "exclusiveGroup": "keystone",
+      "requires": [
+        "wing_N3"
+      ],
+      "branch": "灼燒之翼",
+      "region": "wing"
+    },
+    {
+      "id": "wing_d1",
+      "kind": "small",
+      "name": "餘溫",
+      "effectType": "trailDmgPct",
+      "value": 5,
+      "pos": {
+        "x": 437,
+        "y": -85
+      },
+      "branch": "灼燒之翼",
+      "region": "wing"
+    },
+    {
+      "id": "wing_d2",
+      "kind": "small",
+      "name": "羽翼",
+      "effectType": "evasionPct",
+      "value": 2,
+      "pos": {
+        "x": 537,
+        "y": -46
+      },
+      "branch": "灼燒之翼",
+      "region": "wing"
+    },
+    {
+      "id": "wing_N3",
+      "kind": "notable",
+      "name": "流星步：閃避穿過敵人時施加燃燒",
+      "effectType": "dodgeIgnite",
+      "value": 1,
+      "pos": {
+        "x": 595,
+        "y": -4
+      },
+      "branch": "灼燒之翼",
+      "region": "wing"
+    },
+    {
+      "id": "wing_jewel",
+      "kind": "jewel",
+      "name": "珠寶孔",
+      "effectType": "jewelSocket",
+      "value": null,
+      "pos": {
+        "x": 709,
+        "y": 19
+      },
+      "radius": 220,
+      "branch": "灼燒之翼",
+      "region": "wing"
+    },
+    {
+      "id": "util_sc_1",
+      "kind": "small",
+      "name": "專注",
+      "effectType": "cooldownReductionPct",
+      "value": 5,
+      "pos": {
+        "x": -254,
+        "y": -142
+      },
+      "branch": "通用",
+      "region": "util"
+    },
+    {
+      "id": "util_sc_2",
+      "kind": "notable",
+      "name": "戰鬥節奏：擊殺時所有技能冷卻減少 0.5 秒",
+      "effectType": "onKillCdRefundSec",
+      "value": 0.5,
+      "pos": {
+        "x": -169,
+        "y": -202
+      },
+      "branch": "通用",
+      "region": "util"
+    },
+    {
+      "id": "util_sc_3",
+      "kind": "small",
+      "name": "熱能循環：PP 回復 +15%",
+      "effectType": "ppRegenPct",
+      "value": 15,
+      "pos": {
+        "x": -84,
+        "y": -261
+      },
+      "branch": "通用",
+      "region": "util"
+    },
+    {
+      "id": "util_cw_1",
+      "kind": "small",
+      "name": "輕盈身法",
+      "effectType": "dodgeCooldownPct",
+      "value": -6,
+      "pos": {
+        "x": 84,
+        "y": -261
+      },
+      "branch": "通用",
+      "region": "util"
+    },
+    {
+      "id": "util_cw_2",
+      "kind": "notable",
+      "name": "追風：閃避後 2 秒移動速度 +20%",
+      "effectType": "onDodgeMoveSpeed",
+      "value": {
+        "pct": 20,
+        "sec": 2
+      },
+      "pos": {
+        "x": 169,
+        "y": -202
+      },
+      "branch": "通用",
+      "region": "util"
+    },
+    {
+      "id": "util_cw_3",
+      "kind": "small",
+      "name": "衝刺本能：閃焰衝鋒冷卻 -15%",
+      "effectType": "moveCooldownPct",
+      "value": {
+        "move": "flame_charge",
+        "pct": -15
+      },
+      "pos": {
+        "x": 254,
+        "y": -142
+      },
+      "branch": "通用",
+      "region": "util"
+    },
+    {
+      "id": "util_bot_1",
+      "kind": "small",
+      "name": "生命之焰",
+      "effectType": "maxHpPct",
+      "value": 4,
+      "pos": {
+        "x": -150,
+        "y": 120
+      },
+      "branch": "通用",
+      "region": "util"
+    },
+    {
+      "id": "util_bot_2",
+      "kind": "small",
+      "name": "堅硬鱗片",
+      "effectType": "defensePct",
+      "value": 5,
+      "pos": {
+        "x": -90,
+        "y": 200
+      },
+      "branch": "通用",
+      "region": "util"
+    },
+    {
+      "id": "util_bot_3",
+      "kind": "notable",
+      "name": "毅力：生命低於 35% 時受到傷害 -15%",
+      "effectType": "lowHpDamageTakenPct",
+      "value": {
+        "threshold": 35,
+        "pct": -15
+      },
+      "pos": {
+        "x": 0,
+        "y": 240
+      },
+      "branch": "通用",
+      "region": "util"
+    },
+    {
+      "id": "util_bot_4",
+      "kind": "small",
+      "name": "耐熱體質",
+      "effectType": "damageTakenPct",
+      "value": -2,
+      "pos": {
+        "x": 90,
+        "y": 200
+      },
+      "branch": "通用",
+      "region": "util"
+    },
+    {
+      "id": "util_bot_5",
+      "kind": "small",
+      "name": "迅捷步伐",
+      "effectType": "moveSpeedPct",
+      "value": 3,
+      "pos": {
+        "x": 150,
+        "y": 120
+      },
+      "branch": "通用",
+      "region": "util"
+    },
+    {
+      "id": "util_bot_regen",
+      "kind": "notable",
+      "name": "再燃：脫戰 3 秒後每秒回復 2% HP",
+      "effectType": "outOfCombatRegenPctPerSec",
+      "value": {
+        "delaySec": 3,
+        "pct": 2
+      },
+      "pos": {
+        "x": 0,
+        "y": 330
+      },
+      "branch": "通用",
+      "region": "util"
+    },
+    {
+      "id": "util_bot_potion",
+      "kind": "small",
+      "name": "樹果知識",
+      "effectType": "consumableEffectPct",
+      "value": 10,
+      "pos": {
+        "x": -90,
+        "y": 320
+      },
+      "branch": "通用",
+      "region": "util"
+    },
+    {
+      "id": "util_jewel",
+      "kind": "jewel",
+      "name": "珠寶孔",
+      "effectType": "jewelSocket",
+      "value": null,
+      "pos": {
+        "x": 90,
+        "y": 320
+      },
+      "radius": 220,
+      "branch": "通用",
+      "region": "util"
+    }
+  ],
+  "edges": [
+    [
+      "start_charmander",
+      "sun_a1"
+    ],
+    [
+      "sun_a1",
+      "sun_a2"
+    ],
+    [
+      "sun_a2",
+      "sun_a3"
+    ],
+    [
+      "sun_a3",
+      "sun_N1"
+    ],
+    [
+      "sun_N1",
+      "sun_b1"
+    ],
+    [
+      "sun_b1",
+      "sun_b2"
+    ],
+    [
+      "sun_b2",
+      "sun_N2"
+    ],
+    [
+      "sun_N2",
+      "sun_c1"
+    ],
+    [
+      "sun_c1",
+      "sun_c2"
+    ],
+    [
+      "sun_c2",
+      "sun_c3"
+    ],
+    [
+      "sun_c3",
+      "sun_c4"
+    ],
+    [
+      "sun_c4",
+      "sun_c5"
+    ],
+    [
+      "sun_c5",
+      "sun_KS"
+    ],
+    [
+      "sun_N1",
+      "sun_d1"
+    ],
+    [
+      "sun_d1",
+      "sun_d2"
+    ],
+    [
+      "sun_d2",
+      "sun_N3"
+    ],
+    [
+      "sun_N3",
+      "sun_jewel"
+    ],
+    [
+      "start_charmander",
+      "claw_a1"
+    ],
+    [
+      "claw_a1",
+      "claw_a2"
+    ],
+    [
+      "claw_a2",
+      "claw_a3"
+    ],
+    [
+      "claw_a3",
+      "claw_N1"
+    ],
+    [
+      "claw_N1",
+      "claw_b1"
+    ],
+    [
+      "claw_b1",
+      "claw_b2"
+    ],
+    [
+      "claw_b2",
+      "claw_N2"
+    ],
+    [
+      "claw_N2",
+      "claw_c1"
+    ],
+    [
+      "claw_c1",
+      "claw_c2"
+    ],
+    [
+      "claw_c2",
+      "claw_c3"
+    ],
+    [
+      "claw_c3",
+      "claw_c4"
+    ],
+    [
+      "claw_c4",
+      "claw_c5"
+    ],
+    [
+      "claw_c5",
+      "claw_KS"
+    ],
+    [
+      "claw_N1",
+      "claw_d1"
+    ],
+    [
+      "claw_d1",
+      "claw_d2"
+    ],
+    [
+      "claw_d2",
+      "claw_N3"
+    ],
+    [
+      "claw_N3",
+      "claw_jewel"
+    ],
+    [
+      "start_charmander",
+      "wing_a1"
+    ],
+    [
+      "wing_a1",
+      "wing_a2"
+    ],
+    [
+      "wing_a2",
+      "wing_a3"
+    ],
+    [
+      "wing_a3",
+      "wing_N1"
+    ],
+    [
+      "wing_N1",
+      "wing_b1"
+    ],
+    [
+      "wing_b1",
+      "wing_b2"
+    ],
+    [
+      "wing_b2",
+      "wing_N2"
+    ],
+    [
+      "wing_N2",
+      "wing_c1"
+    ],
+    [
+      "wing_c1",
+      "wing_c2"
+    ],
+    [
+      "wing_c2",
+      "wing_c3"
+    ],
+    [
+      "wing_c3",
+      "wing_c4"
+    ],
+    [
+      "wing_c4",
+      "wing_c5"
+    ],
+    [
+      "wing_c5",
+      "wing_KS"
+    ],
+    [
+      "wing_N1",
+      "wing_d1"
+    ],
+    [
+      "wing_d1",
+      "wing_d2"
+    ],
+    [
+      "wing_d2",
+      "wing_N3"
+    ],
+    [
+      "wing_N3",
+      "wing_jewel"
+    ],
+    [
+      "sun_N1",
+      "util_sc_1"
+    ],
+    [
+      "util_sc_1",
+      "util_sc_2"
+    ],
+    [
+      "util_sc_2",
+      "util_sc_3"
+    ],
+    [
+      "util_sc_3",
+      "claw_N1"
+    ],
+    [
+      "claw_N1",
+      "util_cw_1"
+    ],
+    [
+      "util_cw_1",
+      "util_cw_2"
+    ],
+    [
+      "util_cw_2",
+      "util_cw_3"
+    ],
+    [
+      "util_cw_3",
+      "wing_N1"
+    ],
+    [
+      "sun_a1",
+      "util_bot_1"
+    ],
+    [
+      "util_bot_1",
+      "util_bot_2"
+    ],
+    [
+      "util_bot_2",
+      "util_bot_3"
+    ],
+    [
+      "util_bot_3",
+      "util_bot_4"
+    ],
+    [
+      "util_bot_4",
+      "util_bot_5"
+    ],
+    [
+      "util_bot_5",
+      "wing_a1"
+    ],
+    [
+      "util_bot_3",
+      "util_bot_regen"
+    ],
+    [
+      "util_bot_2",
+      "util_bot_potion"
+    ],
+    [
+      "util_bot_4",
+      "util_jewel"
+    ]
+  ],
+  "ascendancy": [
+    {
+      "id": "asc_flame_wing",
+      "name": "烈焰之翼",
+      "entry": true,
+      "effectType": "dodgeBecomesFlight",
+      "value": {
+        "invulnSec": 0.3,
+        "landingFireDmgPctOfBasic": 80
+      },
+      "desc": "閃避改成短距離飛行，無敵 0.3 秒，落地造成火焰衝擊",
+      "exclusiveGroup": "ascendancy"
+    },
+    {
+      "id": "asc_fw_1",
+      "name": "高空俯衝",
+      "requires": [
+        "asc_flame_wing"
+      ],
+      "effectType": "airborneAreaPct",
+      "value": 20,
+      "exclusiveGroup": null
+    },
+    {
+      "id": "asc_fw_2",
+      "name": "熱氣流",
+      "requires": [
+        "asc_flame_wing"
+      ],
+      "effectType": "flightLeavesTrail",
+      "value": 1,
+      "exclusiveGroup": null
+    },
+    {
+      "id": "asc_fw_3",
+      "name": "烈翼護身",
+      "requires": [
+        "asc_flame_wing"
+      ],
+      "effectType": "postFlightDamageTakenPct",
+      "value": {
+        "pct": -20,
+        "sec": 2
+      },
+      "exclusiveGroup": null
+    },
+    {
+      "id": "asc_dragon_blood",
+      "name": "龍之血脈",
+      "entry": true,
+      "effectType": "fireToDragonConvertPct",
+      "value": 30,
+      "desc": "30% 火焰傷害轉為龍屬性（無視抗火）；近戰命中疊龍氣，滿 5 層下一招必暴擊",
+      "exclusiveGroup": "ascendancy"
+    },
+    {
+      "id": "asc_db_1",
+      "name": "龍氣迸發",
+      "requires": [
+        "asc_dragon_blood"
+      ],
+      "effectType": "dragonAuraMaxStacksDelta",
+      "value": -1,
+      "exclusiveGroup": null
+    },
+    {
+      "id": "asc_db_2",
+      "name": "龍鱗",
+      "requires": [
+        "asc_dragon_blood"
+      ],
+      "effectType": "dragonAuraDamageTakenPctPerStack",
+      "value": -3,
+      "exclusiveGroup": null
+    },
+    {
+      "id": "asc_db_3",
+      "name": "逆鱗爆發",
+      "requires": [
+        "asc_dragon_blood"
+      ],
+      "effectType": "dragonAuraCritDmgPct",
+      "value": 40,
+      "exclusiveGroup": null
+    }
+  ],
+  "jewels": {
+    "normal": {
+      "affixesMin": 2,
+      "affixesMax": 3,
+      "note": "數值詞綴，套用現有上限"
+    },
+    "legendary": [
+      {
+        "id": "jw_solar_lens",
+        "name": "聚光鏡",
+        "rule": "範圍內的小節點：特攻類效果改為「晴天時」同數值的燃燒傷害 ×2"
+      },
+      {
+        "id": "jw_dragon_heart",
+        "name": "龍心",
+        "rule": "範圍內的小節點：防禦類效果改為同數值的攻擊力"
+      },
+      {
+        "id": "jw_tailwind",
+        "name": "順風羽",
+        "rule": "範圍內的小節點：跑速類效果同時套用到投射物速度和火尾傷害"
+      }
+    ],
+    "rules": [
+      "只轉換範圍內 kind=small 的節點，不影響 notable/keystone",
+      "轉換後照樣套 meta.mechanics 上限",
+      "效果需已點亮才生效",
+      "插入前預覽：盤面高亮範圍內會被轉換的節點，提示框逐一列出轉換前後效果",
+      "範圍內節點的提示框要同時顯示原效果（刪除線）與轉換後效果"
+    ]
+  }
+}

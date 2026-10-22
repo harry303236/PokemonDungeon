@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
 import { Environment, FpsMeter, type Light } from '../views/environment';
 import { VfxAssets, VfxView } from '../views/vfx-view';
-import { TalentPanelView } from '../views/talent-panel-view';
+import { TalentBoardController } from '../views/talent-board-ui';
+import { BOARD, shortestPath } from '../../core/build/board';
 import { Sim, MAX_FLOOR, xpToNext, type Progress } from '../../core/sim';
 import { BALANCE } from '../../core/balance';
 import { WALL } from '../../core/dungeon/bsp-gen';
@@ -60,7 +61,8 @@ export class DungeonScene extends Phaser.Scene {
   private lmb: { mode: 'ground' | 'attack' | 'force'; since: number } | null = null;
   private marker: { x: number; y: number; t: number } | null = null;
   private env!: Environment;
-  private talents!: TalentPanelView;
+  private talents!: TalentBoardController;
+  private lockedSaidAt = -9999;
   private vfx: VfxView | null = null;
   private glowSpots: { img: Phaser.GameObjects.Image; x: number; y: number; ph: number; r: number; sp: number }[] = [];
   private fpsMeter = new FpsMeter();
@@ -89,8 +91,8 @@ export class DungeonScene extends Phaser.Scene {
     this.banner = this.add.text(0, 80, '', { fontFamily: HUD_FONT, fontSize: '26px', color: PALETTE.dmgSuper, stroke: '#000', strokeThickness: 5 }).setScrollFactor(0).setDepth(11).setOrigin(0.5);
     this.inv = new InventoryView(() => this.sim, () => saveProgress(this.sim.progress));
     this.skills = new SkillPanelView(() => this.sim, () => saveProgress(this.sim.progress));
-    this.talents = new TalentPanelView(() => this.sim, () => saveProgress(this.sim.progress));
-    this.events.once('shutdown', () => { this.inv.destroy(); this.skills.destroy(); this.talents.destroy(); });
+    this.talents = new TalentBoardController(this, () => this.sim, () => saveProgress(this.sim.progress));
+    this.events.once('shutdown', () => { this.inv.destroy(); this.skills.destroy(); this.talents.setOpen(false); this.talents.destroy(); });
     const kb = this.input.keyboard;
     kb?.addCapture('TAB,F1,F3');
     (['Q', 'W', 'E', 'R'] as const).forEach((key, i) => kb?.on(`keydown-${key}`, (ev: KeyboardEvent) => { if (!ev.repeat && !this.uiOpen()) this.taps.press(i + 1); }));
@@ -103,13 +105,14 @@ export class DungeonScene extends Phaser.Scene {
     kb?.on('keydown-L', (ev: KeyboardEvent) => { this.sim.debugLevelUp(ev.shiftKey); this.sim.refreshBuild(); }); // debug
     kb?.on('keydown-K', (ev: KeyboardEvent) => { if (!this.sim.build.debug) return; if (ev.shiftKey) { this.sim.debugSun(15); this.say('☀ 大晴天（除錯 15 秒）'); return; } this.sim.debugGrantBuild(); if (this.skills.open) this.skills.render(); if (this.talents.open) this.talents.render(); }); // debug: +5 talent pts, 1 of each gem, shards, gold
     kb?.on('keydown-T', () => this.talents.toggle());
+    kb?.on('keydown-J', () => { if (!this.sim.build.debug) return; this.sim.debugGrantJewels(); this.say('💎 除錯：獲得 3 顆傳奇珠寶 + 2 顆珠寶'); if (this.talents.open) this.talents.render(); });
     kb?.on('keydown-R', () => { if (this.sim.player.dead) this.sim.respawn(); });
     kb?.on('keydown-ENTER', () => { if (this.sim.victory) { saveProgress(this.sim.progress); this.scene.start('title'); } });
     this.cameras.main.setRoundPixels(true);
     this.bindEvents();
     this.bindPointer();
     // Debug/test hook (read-only use in automated browser checks).
-    (window as unknown as { __pokedungeon?: unknown }).__pokedungeon = { sim: () => this.sim, cam: this.cameras.main, hudRects: () => this.hudBar.rects };
+    (window as unknown as { __pokedungeon?: unknown }).__pokedungeon = { sim: () => this.sim, game: this.game, boardPath: (id: string) => shortestPath(BOARD, 'start_charmander', id), boardPos: (id: string) => BOARD.nodes.get(id)?.pos, cam: this.cameras.main, hudRects: () => this.hudBar.rects };
     this.bindHudDrop();
   }
 
@@ -164,7 +167,10 @@ export class DungeonScene extends Phaser.Scene {
       this.cameras.main.shake(90, 0.004);
     });
     bus.on('vfx', (e) => { if (this.vfx) this.vfx.fxHint(e); else this.fx.explosion(e.x, e.y, e.r ?? 40); });
-    bus.on('build:gain', (e) => this.say(e.what === 'ash_shard' ? '獲得 灰燼碎片' : '獲得 輔助寶石'));
+    bus.on('build:gain', (e) => { const w = String(e.what);
+      if (w.startsWith('locked:')) { const now = this.time.now; if (now - this.lockedSaidAt < 1500) return; this.lockedSaidAt = now; this.say('尚未學會此招式（T 天賦盤 → 招式主幹）'); return; }
+      if (w.startsWith('jewel:')) { this.say(w === 'jewel:normal' ? '💎 獲得 珠寶' : '💎 獲得 傳奇珠寶！'); if (this.talents.open) this.talents.render(); return; }
+      this.say(w === 'ash_shard' ? '獲得 灰燼碎片' : '獲得 輔助寶石'); });
     bus.on('damage:dealt', (e) => {
       const color = e.target === this.sim.player.id ? PALETTE.dmgPlayer : e.typeEff > 1 ? PALETTE.dmgSuper : e.typeEff < 1 ? PALETTE.dmgWeak : PALETTE.dmg;
       const size = e.isCrit || e.typeEff > 1 ? 20 : 14;

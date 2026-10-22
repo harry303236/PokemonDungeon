@@ -9,6 +9,8 @@ import { moveCooldown, energyCost } from './moves/cooldown';
 import { BASIC_MOVE, DEFAULT_SLOTS, assignSlot, validateSlots, type Slots } from './moves/loadout';
 import { TALENTS, engineMoveId, Build, ensureBuild, moveTags, MOVE_TAGS, STATUSES, GEMS, reactionsFor, triggerMatches, REACTION_RULES, type BuildSave, type ReactionRule } from './build/build';
 import { baseSpec, buildMoveSpec, dmgFactor, areaFactor, type Modifier, type MoveSpec } from './build/pipeline';
+import { JEWEL_RULES, type JewelItem } from './build/board';
+import { typeMult } from './combat/type-chart';
 import { emptyBonuses, mechanics, moveSpeedPct, cdrPct, damageReductionPct, type PlayerBonuses } from './build/talents';
 import { findPath, clampToFloor, hasLineOfSight, type Pt } from './dungeon/pathfind';
 import { rollItem, canEquip, type Item, type ItemSlot } from './loot/loot-roller';
@@ -161,6 +163,23 @@ export class Sim {
     const ratio = (p.hp ?? 1) / Math.max(1, p.maxHp ?? 1); const st = this.playerStats();
     p.stats = st; p.maxHp = st.maxHp; p.hp = Math.max(1, Math.round(st.maxHp * ratio));
   }
+  private jewelSeq = 0;
+  /** Roll a jewel: legendary share from jewel-rules.json, normal jewels get 2-3 affixes. */
+  rollJewel(kind?: string): JewelItem {
+    const legendary = kind && kind !== 'normal' ? kind : undefined;
+    const uid = `j${Math.floor(this.time * 1000)}_${this.jewelSeq++}`;
+    const legs = Object.keys(JEWEL_RULES.legendary);
+    if (legendary || (kind !== 'normal' && this.rng.next() < JEWEL_RULES.drops.legendaryShare)) return { uid, base: legendary ?? legs[this.rng.int(0, legs.length - 1)]! };
+    const pool = [...JEWEL_RULES.normal.affixPool]; const n = this.rng.int(2, 3); const affixes: { effectType: string; value: number }[] = [];
+    for (let i = 0; i < n && pool.length; i++) { const a = pool.splice(this.rng.int(0, pool.length - 1), 1)[0]!; affixes.push({ effectType: a.effectType, value: this.rng.int(Math.min(a.min, a.max), Math.max(a.min, a.max)) }); }
+    return { uid, base: 'normal', affixes };
+  }
+  private maybeDropJewel(boss: boolean): void {
+    if (this.rng.next() >= (boss ? JEWEL_RULES.drops.chanceBoss : JEWEL_RULES.drops.chancePerKill)) return;
+    const j = this.rollJewel(); this.build.s.board.jewels.push(j); this.bus.emit('build:gain', { what: `jewel:${j.base}` });
+  }
+  /** Debug: one of each legendary jewel + two normal jewels. */
+  debugGrantJewels(): void { for (const id of Object.keys(JEWEL_RULES.legendary)) this.build.s.board.jewels.push(this.rollJewel(id)); for (let i = 0; i < 2; i++) this.build.s.board.jewels.push(this.rollJewel('normal')); }
   /** Debug: talent points + one of each gem + respec materials. */
   debugGrantBuild(): void {
     this.debugSun(0); const b = this.build.s; b.bonusPoints += 5; b.gems.push(...Object.keys(GEMS)); b.ashShards += 3; b.gold += 2000; }
@@ -231,6 +250,7 @@ export class Sim {
       this.moveEntity(p, d.dirX * d.speed * dt, d.dirY * d.speed * dt);
       if (!d.moveId && this.bon.keystones.has('ks_skyGlide')) { this.moveTrail += d.speed * dt; if (this.moveTrail >= 28) { this.moveTrail = 0; this.spawnGround('fire', p.x, p.y, 3, p.id); } } // ks_skyGlide
       if (d.moveId) { this.dashHits(p); this.dashExtras(p, d.speed * dt, d.t <= 0); }
+      if (!d.moveId) this.dodgeStep(p, d, dt);
       if (d.t <= 0) p.dash = undefined;
       return;
     }
@@ -238,6 +258,8 @@ export class Sim {
       const len = Math.hypot(cmd.moveX, cmd.moveY) || 1;
       const dx = cmd.moveX || Math.cos(p.rot); const dy = cmd.moveY || Math.sin(p.rot);
       p.dash = { t: 0.2, dirX: dx / (cmd.moveX || cmd.moveY ? len : 1), dirY: dy / (cmd.moveX || cmd.moveY ? len : 1), speed: 650, hit: false };
+      if (this.bon.asc.flight) { p.dash.flight = true; p.iframes = Math.max(p.iframes ?? 0, this.bon.asc.flight.invulnSec); }
+      this.dodgeIgnited.clear();
       p.iframes = Math.max(p.iframes ?? 0, 0.3); if (this.bon.onDodgeSpeed) this.dodgeBuffUntil = this.time + 0.2 + this.bon.onDodgeSpeed.sec; this.dodgeCd = 0.9 * Math.max(0.2, 1 + this.bon.dodgeCdPct / 100);
       return;
     }
@@ -245,10 +267,10 @@ export class Sim {
     if (cmd.attackTarget !== undefined) this.order = { kind: 'attack', target: cmd.attackTarget, path: [], repath: 0 };
     const len = Math.hypot(cmd.moveX, cmd.moveY);
     if (len > 0) { this.order = null; const sp = this.moveSpeed() * dt; this.moveEntity(p, (cmd.moveX / len) * sp, (cmd.moveY / len) * sp); this.walkTrail(sp); }
-    else if (cmd.forceAttack) { this.order = null; const a = this.primaryAttack(); if (a) this.tryCast(a, cmd.aimX, cmd.aimY); }
+    else if (cmd.forceAttack) { this.order = null; const a = this.primaryAttack(); if (a && this.moveUsable(a)) this.tryCast(a, cmd.aimX, cmd.aimY); }
     else this.followOrder(dt);
     const dashTaps = this.dashTaps; this.dashTaps = [false, false, false, false, false];
-    this.slots.forEach((id, i) => { if (id && (cmd.slots[i] || cmd.taps?.[i] || dashTaps[i])) this.tryCast(id, cmd.aimX, cmd.aimY); });
+    this.slots.forEach((id, i) => { if (id && (cmd.slots[i] || cmd.taps?.[i] || dashTaps[i])) { if (this.moveUsable(id)) this.tryCast(id, cmd.aimX, cmd.aimY); else this.bus.emit('build:gain', { what: 'locked:' + id }); } });
     if (cmd.items?.[0]) this.usePotion(0);
   }
 
@@ -302,7 +324,7 @@ export class Sim {
     if (!tgt || tgt.dead || !atk) { this.order = null; return; }
     const d = Math.hypot(tgt.x - p.x, tgt.y - p.y);
     if (d <= this.attackRange(atk) && hasLineOfSight(this.floor, p.x, p.y, tgt.x, tgt.y, T)) {
-      p.rot = Math.atan2(tgt.y - p.y, tgt.x - p.x); this.tryCast(atk, tgt.x, tgt.y); return;
+      p.rot = Math.atan2(tgt.y - p.y, tgt.x - p.x); if (this.moveUsable(atk)) this.tryCast(atk, tgt.x, tgt.y); return;
     }
     o.repath -= dt;
     if (o.repath <= 0 || !o.path.length) {
@@ -322,6 +344,21 @@ export class Sim {
 
   cooldownLeft(id: string): number { return this.cooldowns.get(id) ?? 0; }
 
+  landedAt = -9; private aura = 0; private auraPrimed = false; private ragingUntil = -9; private dodgeIgnited = new Set<number>(); private flightTrailAcc = 0;
+  get dragonAura(): number { return this.aura; }
+  /** dodge per-frame extras: 流星步 ignite on pass-through, 烈焰之翼 flight trail + landing impact */
+  private dodgeStep(p: Entity, d: NonNullable<Entity['dash']>, dt: number): void {
+    if (this.bon.dodgeIgnite > 0) for (const m of this.hash.near(p.x, p.y, p.r + 30)) if (!m.dead && !this.dodgeIgnited.has(m.id) && Math.hypot(m.x - p.x, m.y - p.y) < m.r + p.r) { this.dodgeIgnited.add(m.id); this.applyBurn(m, p.id); }
+    const A = this.bon.asc; if (!d.flight || !A.flight) return;
+    if (A.flightTrail) { this.flightTrailAcc += d.speed * dt; if (this.flightTrailAcc >= 28) { this.flightTrailAcc = 0; this.spawnGround('fire', p.x, p.y, 2, p.id); } }
+    if (d.t <= 0) { // landing: fire impact (% of basic attack), radius grows with airborne area
+      this.landedAt = this.time;
+      this.world.spawn({ kind: 'blast', x: p.x, y: p.y, r: 60 * (1 + (A.airborneAreaPct ?? 0) / 100), team: 'player', owner: p.id, moveId: BASIC, life: 0.05, delay: 0.05, dmgMult: A.flight.landingFireDmgPctOfBasic / 100 });
+      this.bus.emit('reaction', { id: 'flight_landing', x: p.x, y: p.y, r: 60 });
+    }
+  }
+  /** v4 move trunk: trunk moves need rank >= 1 to be cast from slots (non-trunk moves always usable). */
+  moveUsable(id: string): boolean { return this.build.moveRank(id) !== 0; }
   tryCast(id: string, ax: number, ay: number): boolean {
     const m = moveData(id); const p = this.player; const eq = this.equipStats();
     if (this.cooldownLeft(id) > 0) return false;
@@ -331,7 +368,10 @@ export class Sim {
     this.energy -= cost;
     this.cooldowns.set(id, moveCooldown(m, eq.cdr) * this.talentCdMult(id));
     const spec = this.moveSpec(id, eq);
-    const mods: MoveMods = { powerBonus: eq.power, leech: eq.leech + spec.leech, kindling: eq.kindling, spec };
+    const A = this.bon.asc;
+    if (A.airborneAreaPct && (p.dash?.flight || this.time - this.landedAt <= 0.35)) spec.areaPct += A.airborneAreaPct; // 高空俯衝: cast in/just after flight
+    const forceCrit = this.auraPrimed; if (forceCrit) { this.auraPrimed = false; this.aura = 0; }
+    const mods: MoveMods = { powerBonus: eq.power, leech: eq.leech + spec.leech, kindling: eq.kindling, spec, forceCrit };
     const ang = Math.atan2(ay - p.y, ax - p.x);
     const pr = spec.params;
     this.bus.emit('move:cast', { caster: p.id, moveId: id });
@@ -443,9 +483,17 @@ export class Sim {
     if (!a || !d) return 0;
     const phys = m.category === 'physical';
     const mine = src.team === 'player'; const kb = this.bon.keystones;
-    const isCrit = this.rng.next() < BALANCE.critChance + (mine ? (this.bon.critPct + (m.type === 'fire' ? this.bon.fireCritPct : 0)) / 100 : 0);
+    const forced = mine && !!mods?.forceCrit;
+    const isCrit = forced || this.rng.next() < BALANCE.critChance + (mine ? (this.bon.critPct + (m.type === 'fire' ? this.bon.fireCritPct : 0)) / 100 : 0);
     if (mine) {
-      if (isCrit) mult *= 1 + this.bon.critDmgPct / 100;
+      if (isCrit) mult *= 1 + this.bon.critDmgPct / 100 + (forced ? (this.bon.asc.auraCritDmgPct ?? 0) / 100 : 0);
+      if (m.type === 'fire' && this.bon.fireDmgPct) mult *= 1 + this.bon.fireDmgPct / 100;
+      if (phys && this.time < this.ragingUntil && this.bon.onHitTakenAtk) mult *= 1 + this.bon.onHitTakenAtk.pct / 100; // 逆鱗
+      // 龍之血脈: part of fire damage becomes dragon-type (ignores fire resistance)
+      const conv = this.bon.asc.fireToDragonPct ?? 0;
+      if (conv > 0 && m.type === 'fire') { const fe = typeMult('fire', target.types ?? []); const de = typeMult('dragon', target.types ?? []); if (fe > 0) mult *= 1 - conv / 100 + (conv / 100) * (de / fe); }
+      // 龍氣: physical hits stack; at max the next cast is a guaranteed crit
+      if (this.bon.asc.fireToDragonPct !== undefined && phys && target.kind === 'monster') { const max = 5 + (this.bon.asc.auraMaxDelta ?? 0); this.aura = Math.min(max, this.aura + 1); if (this.aura >= max) this.auraPrimed = true; }
       // ks_blaze: +6% fire dmg per 10% HP lost (max +45%)
       if (kb.has('ks_blaze') && m.type === 'fire' && src.maxHp) mult *= 1 + Math.min(0.45, Math.floor((1 - (src.hp ?? 0) / src.maxHp) * 10) * 0.06);
       // ks_solarPower: special attack x1.5 during Sunny Day
@@ -459,7 +507,9 @@ export class Sim {
       burnedPhysical: phys && !!src.burn });
     if (target.kind === 'player' || src.team === 'player') this.lastCombatT = this.time;
     if (target.kind === 'player' && target.maxHp) { // additive damage-taken sum, then capped (meta.mechanics)
-      const dr = damageReductionPct(this.bon, this.mech, (target.hp ?? 0) / target.maxHp).value; const scaled = Math.max(1, Math.round(dmg * (1 - dr / 100)));
+      const A = this.bon.asc; const extra = (A.postFlightDr && this.time - this.landedAt <= A.postFlightDr.sec ? A.postFlightDr.pct : 0) + (A.auraDrPerStack ?? 0) * this.aura;
+      if (this.bon.onHitTakenAtk) this.ragingUntil = this.time + this.bon.onHitTakenAtk.sec;
+      const dr = damageReductionPct(this.bon, this.mech, (target.hp ?? 0) / target.maxHp, extra).value; const scaled = Math.max(1, Math.round(dmg * (1 - dr / 100)));
       target.hp -= scaled; this.lastPlayerDmg = scaled;
     } else target.hp -= dmg;
     if (target.kind === 'player') target.iframes = BALANCE.playerIFrames;
@@ -554,7 +604,9 @@ export class Sim {
     if (!sun) this.bus.emit('vfx', { key: 'chain-line', x: to.x, y: to.y, x2: from.x, y2: from.y }); // under sun the sun-chain line replaces it
     return k;
   }
-  debugSun(sec = 10): void { this.sunT = sec; }
+  /** start Sunny Day (晴空延長 sunDurationPct scales it) */
+  setSun(sec: number): void { this.sunT = sec * (1 + this.bon.sunDurationPct / 100); }
+  debugSun(sec = 10): void { this.setSun(sec); }
 
   applyBurn(t: Entity, src: number): void {
     if (t.types?.includes('fire')) return;
@@ -577,6 +629,7 @@ export class Sim {
     // build currencies: gold always, ash shard / support gem sometimes (TUNE)
     const b = this.build.s; b.gold += Math.round((t.level ?? 1) * (t.isBoss ? 20 : 2));
     if (this.rng.next() < (t.isBoss ? 1 : 0.06)) { b.ashShards++; this.bus.emit('build:gain', { what: 'ash_shard' }); }
+    this.maybeDropJewel(!!t.isBoss);
     if (this.rng.next() < (t.isBoss ? 1 : 0.04)) { const ids = Object.keys(GEMS); const g = ids[this.rng.int(0, ids.length - 1)]; if (g) { b.gems.push(g); this.bus.emit('build:gain', { what: g }); } }
     if (this.bon.burnSpread > 0 && t.burn) for (const o of this.hash.near(t.x, t.y, 90)) if (!o.dead && o !== t) this.applyBurn(o, killer);
     const drops = t.isBoss ? 3 : this.rng.next() < BALANCE.dropChance ? 1 : 0;
@@ -699,7 +752,7 @@ export class Sim {
     for (const e of [...this.world.query('monster'), this.player]) {
       if (e.dead || e.hp === undefined || !e.maxHp) continue;
       if (e.burn) {
-        const bmul = e.kind === 'monster' ? 1 + this.bon.burnDmgPct / 100 : 1;
+        const bmul = e.kind === 'monster' ? (1 + this.bon.burnDmgPct / 100) * (this.sunT > 0 ? 1 + this.bon.sunBurnDmgPct / 100 : 1) : 1;
         e.hp -= e.maxHp * (e.isBoss ? BALANCE.burnPctBoss : BALANCE.burnPctPerSec) * e.burn.stacks * dt * bmul; if (e.kind === 'player' || e.burn.src === this.player.id) this.lastCombatT = this.time;
         e.burn.t -= dt;
         const src = e.burn.src;

@@ -66,14 +66,21 @@ export interface PlayerBonuses {
   ppRegenPct: number; dodgeCdPct: number; evasionPct: number; meleeLifestealPct: number; burnSpread: number;
   maxHpPct: number; cdrPct: number; damageTakenPct: number; consumablePct: number; oocRegen: { delaySec: number; pct: number } | null;
   onDodgeSpeed: { pct: number; sec: number } | null; onKillCdRefundSec: number; lowHpDr: { threshold: number; pct: number } | null; moveCdPct: Record<string, number>;
+  // v4 board extras (handled by BOARD_EFFECTS in board.ts; v3 registry unchanged)
+  fireDmgPct: number; sunBurnDmgPct: number; sunDurationPct: number; dodgeIgnite: number; onHitTakenAtk: { pct: number; sec: number } | null; asc: AscBonuses;
   keystones: Set<string>; /** move-pipeline modifiers contributed by talents */ moveMods: Modifier[];
 }
 export const emptyBonuses = (): PlayerBonuses => ({ fireCritPct: 0, critDmgPct: 0, burnConsumeMultPct: 0, stunDurPct: 0, projSpeedPct: 0, flameChargeHits: 0, comboStack: 0, trailIgnite: 0, trailDmgPct: 0, atkPct: 0, spAtkPct: 0, defPct: 0, speedPct: 0, critPct: 0, burnChancePct: 0, burnDmgPct: 0, ppRegenPct: 0,
   dodgeCdPct: 0, evasionPct: 0, meleeLifestealPct: 0, burnSpread: 0,
-  maxHpPct: 0, cdrPct: 0, damageTakenPct: 0, consumablePct: 0, oocRegen: null, onDodgeSpeed: null, onKillCdRefundSec: 0, lowHpDr: null, moveCdPct: {}, keystones: new Set(), moveMods: [] });
+  maxHpPct: 0, cdrPct: 0, damageTakenPct: 0, consumablePct: 0, oocRegen: null, onDodgeSpeed: null, onKillCdRefundSec: 0, lowHpDr: null, moveCdPct: {}, fireDmgPct: 0, sunBurnDmgPct: 0, sunDurationPct: 0, dodgeIgnite: 0, onHitTakenAtk: null, asc: {}, keystones: new Set(), moveMods: [] });
 
-type Handler = (b: PlayerBonuses, total: number, n: TalentNode, rank: number) => void;
-const pct = (k: keyof PlayerBonuses): Handler => (b, total) => { (b as unknown as Record<string, number>)[k] = ((b as unknown as Record<string, number>)[k] ?? 0) + total; };
+/** Ascendancy effects (v4). Entry node gives the main effect. */
+export interface AscBonuses {
+  flight?: { invulnSec: number; landingFireDmgPctOfBasic: number }; airborneAreaPct?: number; flightTrail?: number; postFlightDr?: { pct: number; sec: number };
+  fireToDragonPct?: number; auraMaxDelta?: number; auraDrPerStack?: number; auraCritDmgPct?: number;
+}
+export type Handler = (b: PlayerBonuses, total: number, n: TalentNode, rank: number) => void;
+export const pct = (k: keyof PlayerBonuses): Handler => (b, total) => { (b as unknown as Record<string, number>)[k] = ((b as unknown as Record<string, number>)[k] ?? 0) + total; };
 /** effectType registry. Add a handler here to make a new effectType live; unknown types warn once and are ignored. */
 export const TALENT_EFFECTS: Record<string, Handler> = {
   none: () => {},
@@ -130,7 +137,7 @@ export const moveSpeedPct = (b: PlayerBonuses, m: TalentMechanics, buffPct = 0):
 /** CDR % for a move: global CDR + per-move reductions (negative moveCooldownPct) summed, then capped. */
 export const cdrPct = (b: PlayerBonuses, m: TalentMechanics, moveKey?: string): Capped => capUp(b.cdrPct - (moveKey ? b.moveCdPct[moveKey] ?? 0 : 0), m.cooldownReductionCapPct);
 /** Damage reduction %: all damage-taken sources summed ADDITIVELY (negative = less damage), then capped. Positive totals (more damage taken) are uncapped. */
-export function damageReductionPct(b: PlayerBonuses, m: TalentMechanics, hpFrac: number): Capped {
-  const sum = b.damageTakenPct + (b.lowHpDr && hpFrac * 100 < b.lowHpDr.threshold ? b.lowHpDr.pct : 0);
+export function damageReductionPct(b: PlayerBonuses, m: TalentMechanics, hpFrac: number, extraTakenPct = 0): Capped {
+  const sum = b.damageTakenPct + extraTakenPct + (b.lowHpDr && hpFrac * 100 < b.lowHpDr.threshold ? b.lowHpDr.pct : 0);
   return capUp(-sum, m.damageTakenReductionCapPct);
 }

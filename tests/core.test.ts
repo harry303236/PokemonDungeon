@@ -79,7 +79,7 @@ describe('save', () => {
 });
 describe('sim smoke', () => {
   it('bot can clear floors without crashing', () => {
-    const sim = new Sim(newProgress(2024)); let cleared = 0; sim.bus.on('floor:cleared', () => cleared++);
+    const sim = new Sim(newProgress(2024)); learnAll(sim); let cleared = 0; sim.bus.on('floor:cleared', () => cleared++);
     for (let f = 0; f < 60 * 60 * 6 && sim.floorNo < 3; f++) {
       if (sim.player.dead) sim.respawn();
       const p = sim.player; const ms = sim.world.query('monster');
@@ -134,7 +134,7 @@ describe('hotbar loadout', () => {
     expect(assignSlot(DEFAULT_SLOTS, 0, 'hyper-beam')).toBe(DEFAULT_SLOTS);
   });
   it('sim casts whatever is in the slot', () => {
-    const sim = new Sim(newProgress(3)); sim.setSlot(0, 'fire-blast');
+    const sim = new Sim(newProgress(3)); learnAll(sim); sim.setSlot(0, 'fire-blast');
     sim.step(1 / 60, { moveX: 0, moveY: 0, aimX: sim.player.x + 50, aimY: sim.player.y, slots: [true, false, false, false, false], dodge: false });
     expect(sim.cooldownLeft('fire-blast')).toBeGreaterThan(7);
   });
@@ -229,7 +229,7 @@ describe('tap buffering', () => {
     expect(tb.consume()).toEqual([false, false, false, false, false]);
   });
   it('sim casts on a buffered tap even though the key is no longer held', () => {
-    const sim = new Sim(newProgress(6)); const tb = new TapBuffer(5); tb.press(1); // Q = flamethrower
+    const sim = new Sim(newProgress(6)); learnAll(sim); const tb = new TapBuffer(5); tb.press(1); // Q = flamethrower
     sim.step(1 / 60, { ...idle(), aimX: sim.player.x + 50, aimY: sim.player.y, taps: tb.consume() });
     expect(sim.cooldownLeft('flamethrower')).toBeGreaterThan(2.5);
   });
@@ -276,3 +276,7 @@ describe('hud number format', () => {
     expect(fmtNum(1_234_567)).toBe('1.2M'); expect(fmtNum(1_000_000)).toBe('1M'); expect(fmtNum(2_500_000_000)).toBe('2.5B');
   });
 });
+
+/** v4 move trunk: slot casts need the trunk move learned (rank >= 1). */
+function learnAll(sim: Sim): void { for (const t of BOARD.trunk.keys()) sim.build.s.board.moves[t] = Math.max(1, sim.build.s.board.moves[t] ?? 0); }
+import { BOARD } from '../src/core/build/board';

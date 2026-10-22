@@ -22,11 +22,11 @@ export interface Entity {
   /** ground: 'seed' | 'fire'; blast: 'sticky' mark; zone: follows caster */ sub?: string; follow?: boolean; scale?: number; /** ground fire laid during Sunny Day (ground_sun look) */ sunlit?: boolean;
   /** generic statuses (ember-seed, ...) driven by data/build/reactions.json */ statuses?: Record<string, { t: number; stacks: number; src: number }>;
   // dash
-  dash?: { t: number; dirX: number; dirY: number; speed: number; hit: boolean; moveId?: string };
+  dash?: { t: number; dirX: number; dirY: number; speed: number; hit: boolean; moveId?: string; /** 烈焰之翼 flight dodge */ flight?: boolean };
   // loot
   item?: Item;
 }
-export interface MoveMods { powerBonus: number; leech: number; kindling: boolean; /** pipeline result for this cast */ spec?: MoveSpec; /** reaction bursts don't re-trigger reactions */ noReact?: boolean; /** damage from a delayed-blast mark (doesn't re-mark/seed) */ fromMark?: boolean }
+export interface MoveMods { powerBonus: number; leech: number; kindling: boolean; /** pipeline result for this cast */ spec?: MoveSpec; /** reaction bursts don't re-trigger reactions */ noReact?: boolean; /** damage from a delayed-blast mark (doesn't re-mark/seed) */ fromMark?: boolean; /** 龍氣 full: guaranteed crit for this cast */ forceCrit?: boolean }
 
 export class World {
   private nextId = 1;

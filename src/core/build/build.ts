@@ -5,6 +5,7 @@ import tagsJson from '../../data/build/move-tags.json';
 import reactionsJson from '../../data/build/reactions.json';
 import { opsModifier, warnOnce, compatible, STAGES, type Modifier, type Op, type OpsDef, type Stage, type StatusApply } from './pipeline';
 import { canAllocate, canRefund, pointsSpent, pointsTotal, talentBonuses, validateTalentData, type Alloc, type PlayerBonuses, type TalentData } from './talents';
+import { BOARD, emptyBoardState, migrateBuildSave, boardPointsSpent, boardBonuses, mergeBonuses, canAllocNode, canRefundNode, canRankMove, canUnrankMove, canAllocAsc, canRefundAsc, type BoardState, type BoardCtx } from './board';
 
 export const TALENTS = talentJson as unknown as TalentData;
 for (const e of validateTalentData(TALENTS)) console.warn(`[talents] ${e}`);
@@ -26,6 +27,8 @@ interface Bindings {
 export const DIRECTOR = directorJson as unknown as DirectorData;
 const BIND = bindingsJson as unknown as Bindings;
 export const engineMoveId = (directorId: string): string => BIND.moveIdMap[directorId] ?? directorId;
+/** engine move id -> v4 trunk (director) id, or null when the move is not on the trunk */
+export const directorMoveId = (engineId: string): string | null => [...BOARD.trunk.keys()].find((d) => engineMoveId(d) === engineId) ?? null;
 
 /** Validate director file against bindings + engine; returns problems (warned at load). */
 export function validateDirector(d: DirectorData = DIRECTOR, b: Bindings = BIND): string[] {
@@ -86,9 +89,15 @@ export interface BuildSave {
   sockets: Record<string, (string | null)[]>; // keyed by MOVE id -> sockets travel with the move across slot rebinding
   upgrades: Record<string, Record<string, string>>; // moveId -> group -> option id
   gold: number; ashShards: number; bonusPoints: number;
+  /** v4 talent board (ids only) */
+  board: BoardState; boardVersion?: number; migratedFromV3?: boolean;
 }
-export const newBuildSave = (): BuildSave => ({ talents: {}, gems: [], sockets: {}, upgrades: {}, gold: 0, ashShards: 0, bonusPoints: 0 });
-export function ensureBuild(b: Partial<BuildSave> | undefined): BuildSave { return { ...newBuildSave(), ...(b ?? {}) }; }
+export const newBuildSave = (): BuildSave => ({ talents: {}, gems: [], sockets: {}, upgrades: {}, gold: 0, ashShards: 0, bonusPoints: 0, board: emptyBoardState(), boardVersion: 4 });
+/** Fill defaults and migrate: saves without boardVersion 4 (v3) get all talent points refunded into a fresh v4 board. */
+export function ensureBuild(b: Partial<BuildSave> | undefined): BuildSave {
+  if (!b) return newBuildSave();
+  return migrateBuildSave({ ...newBuildSave(), boardVersion: undefined, ...b } as BuildSave);
+}
 
 export const RESPEC_FREE_BEFORE = (): number => TALENTS.meta.respec.freeBeforeLevel;
 export const fullResetCost = (level: number): number => level < RESPEC_FREE_BEFORE() ? 0 : level * 100; // TUNE: gold
@@ -102,7 +111,43 @@ export class Build {
   debug = false;
   constructor(public s: BuildSave, private ctx: () => { level: number; evoStage1: number }) {}
   tctx() { const c = this.ctx(); return { level: c.level, evoStage: c.evoStage1, bonusPoints: this.s.bonusPoints, debug: this.debug }; }
-  pointsLeft(): number { return pointsTotal(TALENTS, this.tctx()) - pointsSpent(this.s.talents); }
+  /** Shared pool: level-1 (+debug) minus v3 tree ranks (0 after migration) minus v4 board nodes + move ranks. */
+  pointsLeft(): number { return pointsTotal(TALENTS, this.tctx()) - pointsSpent(this.s.talents) - boardPointsSpent(BOARD, this.s.board); }
+  bctx(): BoardCtx { const c = this.ctx(); return { level: c.level, evoStage: c.evoStage1, pointsLeft: this.pointsLeft() }; }
+  private refundCost(): { ok: boolean; reason?: string } {
+    const paid = this.ctx().level >= RESPEC_FREE_BEFORE(); if (paid && this.s.ashShards < 1) return { ok: false, reason: 'ashShard' };
+    if (paid) this.s.ashShards--; return { ok: true };
+  }
+  // ----- v4 board -----
+  allocNode(id: string): { ok: boolean; reason?: string } { const r = canAllocNode(BOARD, this.s.board, id, this.bctx()); if (r.ok) this.s.board.nodes.push(id); return r; }
+  refundNode(id: string): { ok: boolean; reason?: string } {
+    const r = canRefundNode(BOARD, this.s.board, id); if (!r.ok) return r; const c = this.refundCost(); if (!c.ok) return c;
+    this.s.board.nodes = this.s.board.nodes.filter((x) => x !== id); return { ok: true };
+  }
+  rankMove(m: string): { ok: boolean; reason?: string } { const r = canRankMove(BOARD, this.s.board, m, this.bctx()); if (r.ok) this.s.board.moves[m] = (this.s.board.moves[m] ?? 0) + 1; return r; }
+  unrankMove(m: string): { ok: boolean; reason?: string } {
+    const r = canUnrankMove(BOARD, this.s.board, m); if (!r.ok) return r; const c = this.refundCost(); if (!c.ok) return c;
+    const v = (this.s.board.moves[m] ?? 0) - 1; if (v <= 0) delete this.s.board.moves[m]; else this.s.board.moves[m] = v;
+    const t = BOARD.trunk.get(m); if (t && v < t.variantAtRank) { const e = engineMoveId(m); if (this.s.upgrades[e]) delete this.s.upgrades[e].variant; } // variant needs rank 3
+    return { ok: true };
+  }
+  moveRank(engineId: string): number { const d = directorMoveId(engineId); return d ? this.s.board.moves[d] ?? 0 : -1; }
+  /** rank-3 variant pick (two existing variants) */
+  canChooseVariant(engineId: string): boolean { const d = directorMoveId(engineId); const t = d ? BOARD.trunk.get(d) : undefined; return !t || (this.s.board.moves[d!] ?? 0) >= t.variantAtRank; }
+  allocAsc(id: string): { ok: boolean; reason?: string } { const c = this.ctx(); const r = canAllocAsc(BOARD, this.s.board, id, { level: c.level, evoStage: c.evoStage1 }); if (r.ok) this.s.board.asc.push(id); return r; }
+  refundAsc(id: string): { ok: boolean; reason?: string } {
+    const r = canRefundAsc(BOARD, this.s.board, id); if (!r.ok) return r; const c = this.refundCost(); if (!c.ok) return c;
+    this.s.board.asc = this.s.board.asc.filter((x) => x !== id); return { ok: true };
+  }
+  socketJewel(sock: string, uid: string): { ok: boolean; reason?: string } {
+    if (BOARD.nodes.get(sock)?.kind !== 'jewel') return { ok: false, reason: 'notSocket' };
+    if (!this.s.board.nodes.includes(sock)) return { ok: false, reason: 'socketNotAllocated' };
+    if (!this.s.board.jewels.some((j) => j.uid === uid)) return { ok: false, reason: 'noJewel' };
+    for (const [k, v] of Object.entries(this.s.board.sockets)) if (v === uid) delete this.s.board.sockets[k];
+    this.s.board.sockets[sock] = uid; return { ok: true };
+  }
+  unsocketJewel(sock: string): { ok: boolean; reason?: string } { if (!this.s.board.sockets[sock]) return { ok: false, reason: 'empty' }; delete this.s.board.sockets[sock]; return { ok: true }; }
+  socketedUids(): Set<string> { return new Set(Object.values(this.s.board.sockets)); }
   allocate(id: string): { ok: boolean; reason?: string } {
     const r = canAllocate(TALENTS, this.s.talents, id, this.tctx()); if (!r.ok) return r;
     this.s.talents[id] = (this.s.talents[id] ?? 0) + 1; return { ok: true };
@@ -118,9 +163,9 @@ export class Build {
   }
   fullReset(): { ok: boolean; reason?: string } {
     const cost = fullResetCost(this.ctx().level); if (this.s.gold < cost) return { ok: false, reason: 'gold' };
-    this.s.gold -= cost; this.s.talents = {}; return { ok: true };
+    this.s.gold -= cost; this.s.talents = {}; const keep = this.s.board; this.s.board = { ...emptyBoardState(), jewels: keep.jewels }; this.s.upgrades = {}; return { ok: true };
   }
-  bonuses(): PlayerBonuses { return talentBonuses(TALENTS, this.s.talents); }
+  bonuses(): PlayerBonuses { return mergeBonuses(talentBonuses(TALENTS, this.s.talents), boardBonuses(BOARD, this.s.board, engineMoveId)); }
 
   sockets(moveId: string): (string | null)[] {
     const n = socketCount(this.ctx().evoStage1); const cur = this.s.sockets[moveId] ?? [];

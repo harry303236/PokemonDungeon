@@ -179,5 +179,73 @@
     "label": "脫戰回復",
     "fmt": "tpl",
     "tpl": "脫戰 {delaySec} 秒後每秒回復 {pct}% 最大 HP"
+  },
+  "fireDmgPct": {
+    "label": "火系傷害",
+    "fmt": "pct"
+  },
+  "areaPct": {
+    "label": "範圍",
+    "fmt": "pct"
+  },
+  "sunBurnDmgPct": {
+    "label": "晴天時燃燒傷害",
+    "fmt": "pct"
+  },
+  "attackSpeedPct": {
+    "label": "攻擊速度（基本攻擊冷卻縮減）",
+    "fmt": "pct",
+    "cap": "cooldownReductionCapPct",
+    "stat": "cdr"
+  },
+  "onHitTakenAtkPct": {
+    "label": "逆鱗",
+    "fmt": "tpl",
+    "tpl": "被擊中後 {sec} 秒內攻擊 +{pct}%"
+  },
+  "dodgeIgnite": {
+    "label": "閃避穿過敵人時施加燃燒",
+    "fmt": "flag"
+  },
+  "jewelSocket": {
+    "label": "",
+    "fmt": "none"
+  },
+  "dodgeBecomesFlight": {
+    "label": "飛行閃避",
+    "fmt": "tpl",
+    "tpl": "閃避改為短距離飛行：無敵 {invulnSec} 秒，落地造成基本攻擊 {landingFireDmgPctOfBasic}% 的火焰衝擊"
+  },
+  "airborneAreaPct": {
+    "label": "空中施放範圍",
+    "fmt": "pct"
+  },
+  "flightLeavesTrail": {
+    "label": "飛行留下火焰路徑",
+    "fmt": "flag"
+  },
+  "postFlightDamageTakenPct": {
+    "label": "落地減傷",
+    "fmt": "tpl",
+    "tpl": "落地後 {sec} 秒內減傷 {pct}%",
+    "inv": true
+  },
+  "fireToDragonConvertPct": {
+    "label": "火焰傷害轉為龍屬性（無視抗火）",
+    "fmt": "pct"
+  },
+  "dragonAuraMaxStacksDelta": {
+    "label": "龍氣層數上限",
+    "fmt": "flat"
+  },
+  "dragonAuraDamageTakenPctPerStack": {
+    "label": "每層龍氣減傷",
+    "fmt": "pct",
+    "inv": true,
+    "arrow": true
+  },
+  "dragonAuraCritDmgPct": {
+    "label": "龍氣必暴擊的暴擊傷害",
+    "fmt": "pct"
   }
 }

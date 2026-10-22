@@ -78,3 +78,12 @@
 - Caps (meta.mechanics) are applied after summing ALL modifiers: move speed (talents + post-dodge buff), CDR (global + per-move), damage reduction (all damage-taken sources summed additively, e.g. 耐熱體質 + 毅力). Tooltips show the effective post-cap total and flag when capped.
 - 戰鬥節奏 limiter: `onKillCdRefundMaxPerFrame` (1) and `onKillCdRefundMaxSecPerSec` (1.5, rolling 1 s window) — added to meta.mechanics in both repo and director copies.
 - Click-to-move moves exactly to waypoints (budget clipped at waypoint), so higher speed cannot overshoot; covered by a test at > cap speed.
+
+## 2026-10-21 · 天賦系統 v4（節點盤 + 招式主幹 + 昇華 + 珠寶）
+- 資料：`src/data/build/charmander-talents-v4.json`（導演檔副本，66 節點 / 68 無向邊）、`jewel-rules.json`（傳奇轉換規則、普通詞綴池、掉落率）。v3 檔保留不刪。
+- 規則（`core/build/board.ts`）：鄰接才可點；退點以 BFS 檢查，任一剩餘節點與起點斷開即擋下；`requires` 只用於基石（需 `<zone>_N3`，最少 16 點）與昇華。珠寶孔半徑內節點清單載入時預先計算。
+- 點數：每級 1 點、共用池（主幹＋盤面）；Lv1 招式（火花）第 1 級免費（Lv1 時 0 點）。
+- 傳奇珠寶只轉換半徑內小型節點，轉換後仍走 meta.mechanics 上限（後加總）。重疊時先鑲嵌的孔優先。
+- 存檔只存節點 id；非 v4 存檔遷移時全數退點（talents/upgrades 清空，`migratedFromV3`）。
+- UI：獨立 Phaser 場景 `talent-board`（拖曳平移、滾輪以游標為中心縮放 0.35–1.6）＋ DOM 覆蓋層（規劃/確認、主幹、珠寶列、昇華視窗、小地圖、提示框）。昇華點擊即生效（不走規劃）。
+- 招式鎖定只在槽位/自動施放把關；`Sim.tryCast` API 本身不檢查。
